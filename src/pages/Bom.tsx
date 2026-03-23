@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/select";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { Checkbox } from "@/components/ui/checkbox";
 import ItemDetailDialog from "@/components/ItemDetailDialog";
 
 export default function BomPage() {
