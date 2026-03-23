@@ -39,6 +39,7 @@ import {
 } from "@/components/ui/select";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import CsvImportDialog from "@/components/CsvImportDialog";
 
 type Supplier = {
   id: string;
