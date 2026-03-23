@@ -14,12 +14,22 @@ interface CsvImportDialogProps {
   onImport: (rows: Record<string, string>[]) => Promise<void>;
 }
 
+function detectSeparator(headerLine: string): string {
+  const semicolonCount = (headerLine.match(/;/g) || []).length;
+  const commaCount = (headerLine.match(/,/g) || []).length;
+  const tabCount = (headerLine.match(/\t/g) || []).length;
+  if (tabCount > semicolonCount && tabCount > commaCount) return "\t";
+  if (semicolonCount >= commaCount) return ";";
+  return ",";
+}
+
 function parseCsv(text: string): Record<string, string>[] {
   const lines = text.trim().split(/\r?\n/);
   if (lines.length < 2) return [];
-  const headers = lines[0].split(";").map(h => h.trim().replace(/^"|"$/g, ""));
-  return lines.slice(1).map(line => {
-    const values = line.split(";").map(v => v.trim().replace(/^"|"$/g, ""));
+  const sep = detectSeparator(lines[0]);
+  const headers = lines[0].split(sep).map(h => h.trim().replace(/^"|"$/g, ""));
+  return lines.slice(1).filter(l => l.trim()).map(line => {
+    const values = line.split(sep).map(v => v.trim().replace(/^"|"$/g, ""));
     const row: Record<string, string> = {};
     headers.forEach((h, i) => { row[h] = values[i] || ""; });
     return row;
@@ -68,7 +78,7 @@ export default function CsvImportDialog({ open, onOpenChange, title, expectedCol
         <DialogHeader><DialogTitle>{title}</DialogTitle></DialogHeader>
         <div className="space-y-4">
           <div className="text-xs text-muted-foreground">
-            Formato CSV con separatore <code className="font-mono bg-muted px-1 rounded">;</code> — Colonne attese: <span className="font-mono text-primary">{expectedColumns.join("; ")}</span>
+            Formato CSV con separatore <code className="font-mono bg-muted px-1 rounded">;</code> o <code className="font-mono bg-muted px-1 rounded">,</code> (auto-rilevato) — Colonne attese: <span className="font-mono text-primary">{expectedColumns.join("; ")}</span>
           </div>
           <div className="flex items-center gap-3">
             <input ref={fileRef} type="file" accept=".csv,.txt" onChange={handleFile} className="text-sm file:mr-2 file:py-1 file:px-3 file:rounded file:border-0 file:text-xs file:bg-primary file:text-primary-foreground" />
