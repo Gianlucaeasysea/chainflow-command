@@ -152,7 +152,10 @@ export default function PurchaseOrdersPage() {
           <h1 className="text-xl font-semibold text-foreground">Ordini Fornitori</h1>
           <p className="text-sm text-muted-foreground">{orders.length} ordini</p>
         </div>
-        <Button onClick={() => setCreateOpen(true)} className="gap-2"><Plus className="h-4 w-4" /> Nuovo PO</Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => setCsvOpen(true)} className="gap-2"><Upload className="h-4 w-4" /> Importa CSV</Button>
+          <Button onClick={() => setCreateOpen(true)} className="gap-2"><Plus className="h-4 w-4" /> Nuovo PO</Button>
+        </div>
       </div>
 
       <div className="flex gap-3">
