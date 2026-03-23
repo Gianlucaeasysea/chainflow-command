@@ -12,10 +12,6 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
 import {
-  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
-  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
-import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -59,7 +55,6 @@ export default function PurchaseOrdersPage() {
   const [detailLineSearch, setDetailLineSearch] = useState("");
   const [detailLineForm, setDetailLineForm] = useState<LineEntry>({ item_id: "", quantity: "1", unit_price: "0", discount_pct: "0", notes: "" });
   const [csvOpen, setCsvOpen] = useState(false);
-  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const qc = useQueryClient();
 
   const { data: suppliers = [] } = useQuery({
@@ -385,7 +380,7 @@ export default function PurchaseOrdersPage() {
                         <td className="p-3 flex items-center gap-2">
                           <Eye className="h-4 w-4 text-muted-foreground" />
                           <button
-                            onClick={(e) => { e.stopPropagation(); setDeleteConfirmId(o.id); }}
+                            onClick={(e) => { e.stopPropagation(); if (window.confirm(`Eliminare ${o.po_number}? Questa operazione è irreversibile.`)) deleteMut.mutate(o.id); }}
                             className="text-destructive/60 hover:text-destructive transition-colors"
                             title="Elimina ordine"
                           >
@@ -700,7 +695,7 @@ export default function PurchaseOrdersPage() {
                   <span className="font-mono">{selectedOrder.po_number}</span>
                   <Badge className={cn("text-xs", getStatusInfo(selectedOrder.status).color)}>{getStatusInfo(selectedOrder.status).label}</Badge>
                   <button
-                    onClick={() => setDeleteConfirmId(selectedOrder.id)}
+                    onClick={() => { if (window.confirm(`Eliminare ${selectedOrder.po_number}? Questa operazione è irreversibile.`)) { setDetailId(null); deleteMut.mutate(selectedOrder.id); } }}
                     className="ml-auto text-destructive/60 hover:text-destructive transition-colors"
                     title="Elimina ordine"
                   >
@@ -851,26 +846,6 @@ export default function PurchaseOrdersPage() {
           </form>
         </DialogContent>
       </Dialog>
-
-      <AlertDialog open={!!deleteConfirmId} onOpenChange={(open) => { if (!open) setDeleteConfirmId(null); }}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Eliminare l'ordine?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Questa operazione è irreversibile. L'ordine, le righe e lo storico stati verranno eliminati definitivamente.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Annulla</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => deleteConfirmId && deleteMut.mutate(deleteConfirmId)}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
-              Elimina
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
 
       <CsvImportDialog open={csvOpen} onOpenChange={setCsvOpen} title="Importa Ordini da CSV"
         expectedColumns={["fornitore", "valuta", "incoterm", "data_consegna", "note"]}
