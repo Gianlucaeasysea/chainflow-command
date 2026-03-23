@@ -1,12 +1,13 @@
 import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { Plus, Search, Eye, Upload, Calendar, Clock, TrendingUp } from "lucide-react";
+import { Plus, Search, Eye, Upload, Clock, TrendingUp, Package, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
@@ -22,6 +23,7 @@ const PO_STATUSES = [
   { value: "draft", label: "Bozza", color: "text-muted-foreground bg-muted/50" },
   { value: "sent", label: "Inviato", color: "status-info" },
   { value: "confirmed", label: "Confermato", color: "status-ok" },
+  { value: "pre_series", label: "Pre-Serie", color: "bg-purple-500/20 text-purple-300" },
   { value: "in_production", label: "In Produzione", color: "status-warning" },
   { value: "shipping", label: "In Spedizione", color: "status-info" },
   { value: "customs", label: "In Dogana", color: "status-warning" },
@@ -32,16 +34,27 @@ const PO_STATUSES = [
 
 const INCOTERMS = ["EXW", "FOB", "CIF", "DDP", "FCA", "CPT"];
 
+type LineEntry = {
+  item_id: string;
+  quantity: string;
+  unit_price: string;
+  discount_pct: string;
+  notes: string;
+};
+
 export default function PurchaseOrdersPage() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [createOpen, setCreateOpen] = useState(false);
+  const [createStep, setCreateStep] = useState(0); // 0=header, 1=lines, 2=review
   const [detailId, setDetailId] = useState<string | null>(null);
   const [addLineOpen, setAddLineOpen] = useState(false);
-  const [form, setForm] = useState({ supplier_id: "", currency: "EUR", incoterm: "EXW", shipping_port: "", requested_delivery_date: "", notes: "" });
-  const [lineForm, setLineForm] = useState({ item_id: "", quantity: "1", unit_price: "0", discount_pct: "0", notes: "" });
-  const [csvOpen, setCsvOpen] = useState(false);
+  const [form, setForm] = useState({ supplier_id: "", currency: "EUR", incoterm: "EXW", shipping_port: "", requested_delivery_date: "", notes: "", is_pre_series: false });
+  const [createLines, setCreateLines] = useState<LineEntry[]>([]);
   const [lineSearch, setLineSearch] = useState("");
+  const [detailLineSearch, setDetailLineSearch] = useState("");
+  const [detailLineForm, setDetailLineForm] = useState<LineEntry>({ item_id: "", quantity: "1", unit_price: "0", discount_pct: "0", notes: "" });
+  const [csvOpen, setCsvOpen] = useState(false);
   const qc = useQueryClient();
 
   const { data: suppliers = [] } = useQuery({
@@ -96,18 +109,12 @@ export default function PurchaseOrdersPage() {
     queryFn: async () => { const { data, error } = await supabase.from("production_orders").select("*"); if (error) throw error; return data; },
   });
 
-  // Lead time calculations per item
+  // Lead time per item
   const leadTimeStats = useMemo(() => {
     const stats: Record<string, { avg: number; count: number; min: number; max: number }> = {};
-    
-    // For each delivered PO, calculate lead time per item
     orders.filter(o => o.actual_delivery_date && o.order_date).forEach(po => {
-      const orderDate = new Date(po.order_date!);
-      const deliveryDate = new Date(po.actual_delivery_date!);
-      const days = Math.round((deliveryDate.getTime() - orderDate.getTime()) / (1000 * 60 * 60 * 24));
-      
-      const linesForPo = allPoLines.filter(l => l.purchase_order_id === po.id);
-      linesForPo.forEach(line => {
+      const days = Math.round((new Date(po.actual_delivery_date!).getTime() - new Date(po.order_date!).getTime()) / 86400000);
+      allPoLines.filter(l => l.purchase_order_id === po.id).forEach(line => {
         if (!stats[line.item_id]) stats[line.item_id] = { avg: 0, count: 0, min: Infinity, max: 0 };
         const s = stats[line.item_id];
         s.count++;
@@ -119,82 +126,75 @@ export default function PurchaseOrdersPage() {
     return stats;
   }, [orders, allPoLines]);
 
-  // End-to-end cycle: PO order date → Production order completion
+  // Cycle time stats
   const cycleTimeStats = useMemo(() => {
-    const results: Array<{
-      productName: string;
-      woNumber: string;
-      poNumber: string;
-      orderDate: string;
-      deliveryDate: string;
-      productionEnd: string;
-      leadTimeDays: number;
-      productionDays: number;
-      totalDays: number;
-    }> = [];
-
-    productionOrders.filter(wo => wo.actual_end).forEach(wo => {
+    return productionOrders.filter(wo => wo.actual_end).map(wo => {
       const productItem = items.find(i => i.id === wo.product_item_id);
-      // Find POs that contain components for this product (simplified: look at POs delivered before WO started)
-      const relevantPOs = orders.filter(po => 
-        po.actual_delivery_date && po.order_date &&
-        allPoLines.some(l => l.purchase_order_id === po.id)
-      );
-      
-      if (relevantPOs.length > 0) {
-        // Use earliest PO order date as start
-        const earliestPO = relevantPOs.reduce((earliest, po) => 
-          new Date(po.order_date!) < new Date(earliest.order_date!) ? po : earliest
-        );
-        
-        const orderDate = new Date(earliestPO.order_date!);
-        const deliveryDate = new Date(earliestPO.actual_delivery_date!);
-        const productionEnd = new Date(wo.actual_end!);
-        
-        const leadTimeDays = Math.round((deliveryDate.getTime() - orderDate.getTime()) / (1000 * 60 * 60 * 24));
-        const productionDays = Math.round((productionEnd.getTime() - deliveryDate.getTime()) / (1000 * 60 * 60 * 24));
-        const totalDays = Math.round((productionEnd.getTime() - orderDate.getTime()) / (1000 * 60 * 60 * 24));
+      const relevantPOs = orders.filter(po => po.actual_delivery_date && po.order_date);
+      if (relevantPOs.length === 0) return null;
+      const earliestPO = relevantPOs.reduce((e, po) => new Date(po.order_date!) < new Date(e.order_date!) ? po : e);
+      const orderDate = new Date(earliestPO.order_date!);
+      const deliveryDate = new Date(earliestPO.actual_delivery_date!);
+      const productionEnd = new Date(wo.actual_end!);
+      return {
+        productName: productItem?.item_code || "?",
+        woNumber: wo.wo_number,
+        poNumber: earliestPO.po_number,
+        orderDate: earliestPO.order_date!,
+        deliveryDate: earliestPO.actual_delivery_date!,
+        productionEnd: wo.actual_end!,
+        leadTimeDays: Math.round((deliveryDate.getTime() - orderDate.getTime()) / 86400000),
+        productionDays: Math.round((productionEnd.getTime() - deliveryDate.getTime()) / 86400000),
+        totalDays: Math.round((productionEnd.getTime() - orderDate.getTime()) / 86400000),
+      };
+    }).filter(Boolean) as any[];
+  }, [productionOrders, orders, items]);
 
-        results.push({
-          productName: productItem?.item_code || "?",
-          woNumber: wo.wo_number,
-          poNumber: earliestPO.po_number,
-          orderDate: earliestPO.order_date!,
-          deliveryDate: earliestPO.actual_delivery_date!,
-          productionEnd: wo.actual_end!,
-          leadTimeDays,
-          productionDays,
-          totalDays,
-        });
-      }
-    });
-    return results;
-  }, [productionOrders, orders, allPoLines, items]);
-
-  // Get supplier-specific price for selected item
-  const getSupplierPrice = (itemId: string, supplierId: string) => {
-    return supplierItems.find(si => si.item_id === itemId && si.supplier_id === supplierId);
-  };
+  const getSupplierPrice = (itemId: string, supplierId: string) =>
+    supplierItems.find(si => si.item_id === itemId && si.supplier_id === supplierId);
 
   const selectedOrder = orders.find(o => o.id === detailId);
-  const selectedSupplierId = selectedOrder?.supplier_id || form.supplier_id;
+
+  // --- MUTATIONS ---
 
   const createMut = useMutation({
     mutationFn: async () => {
       const poNum = `PO-${new Date().getFullYear()}-${String(orders.length + 1).padStart(4, "0")}`;
+      const initialStatus = form.is_pre_series ? "pre_series" : "draft";
       const { data, error } = await supabase.from("purchase_orders").insert({
         po_number: poNum, supplier_id: form.supplier_id, currency: form.currency,
         incoterm: form.incoterm, shipping_port: form.shipping_port || null,
-        requested_delivery_date: form.requested_delivery_date || null, notes: form.notes || null,
+        requested_delivery_date: form.requested_delivery_date || null,
+        notes: form.notes || null,
         order_date: new Date().toISOString().split("T")[0],
+        status: initialStatus,
       }).select().single();
       if (error) throw error;
-      await supabase.from("po_status_history").insert({ purchase_order_id: data.id, status: "draft", notes: "Ordine creato" });
+
+      // Insert lines (without line_total — it's generated)
+      if (createLines.length > 0) {
+        const rows = createLines.map((l, i) => ({
+          purchase_order_id: data.id,
+          item_id: l.item_id,
+          quantity: parseFloat(l.quantity),
+          unit_price: parseFloat(l.unit_price),
+          discount_pct: parseFloat(l.discount_pct),
+          notes: l.notes || null,
+          sort_order: i,
+        }));
+        const { error: lineErr } = await supabase.from("po_lines").insert(rows);
+        if (lineErr) throw lineErr;
+      }
+
+      await supabase.from("po_status_history").insert({
+        purchase_order_id: data.id, status: initialStatus,
+        notes: form.is_pre_series ? "Ordine pre-serie creato" : "Ordine creato",
+      });
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["purchase_orders"] });
-      setCreateOpen(false);
-      setForm({ supplier_id: "", currency: "EUR", incoterm: "EXW", shipping_port: "", requested_delivery_date: "", notes: "" });
+      qc.invalidateQueries({ queryKey: ["all_po_lines"] });
+      resetCreateForm();
       toast.success("Ordine creato");
     },
     onError: (e) => toast.error((e as Error).message),
@@ -202,24 +202,23 @@ export default function PurchaseOrdersPage() {
 
   const addLineMut = useMutation({
     mutationFn: async () => {
-      const lineTotal = parseFloat(lineForm.quantity) * parseFloat(lineForm.unit_price) * (1 - parseFloat(lineForm.discount_pct) / 100);
       const { error } = await supabase.from("po_lines").insert({
-        purchase_order_id: detailId!, item_id: lineForm.item_id,
-        quantity: parseFloat(lineForm.quantity), unit_price: parseFloat(lineForm.unit_price),
-        discount_pct: parseFloat(lineForm.discount_pct), notes: lineForm.notes || null,
-        sort_order: poLines.length, line_total: lineTotal,
+        purchase_order_id: detailId!,
+        item_id: detailLineForm.item_id,
+        quantity: parseFloat(detailLineForm.quantity),
+        unit_price: parseFloat(detailLineForm.unit_price),
+        discount_pct: parseFloat(detailLineForm.discount_pct),
+        notes: detailLineForm.notes || null,
+        sort_order: poLines.length,
       });
       if (error) throw error;
-      // Update PO total
-      const newTotal = poLines.reduce((sum, l) => sum + Number(l.line_total || 0), 0) + lineTotal;
-      await supabase.from("purchase_orders").update({ total_amount: newTotal }).eq("id", detailId!);
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["po_lines", detailId] });
       qc.invalidateQueries({ queryKey: ["all_po_lines"] });
       qc.invalidateQueries({ queryKey: ["purchase_orders"] });
       setAddLineOpen(false);
-      setLineForm({ item_id: "", quantity: "1", unit_price: "0", discount_pct: "0", notes: "" });
+      setDetailLineForm({ item_id: "", quantity: "1", unit_price: "0", discount_pct: "0", notes: "" });
       toast.success("Riga aggiunta");
     },
     onError: (e) => toast.error((e as Error).message),
@@ -228,13 +227,10 @@ export default function PurchaseOrdersPage() {
   const changeStatusMut = useMutation({
     mutationFn: async ({ orderId, newStatus }: { orderId: string; newStatus: string }) => {
       const updates: Record<string, any> = { status: newStatus };
-      if (newStatus === "delivered") {
-        updates.actual_delivery_date = new Date().toISOString().split("T")[0];
-      }
+      if (newStatus === "delivered") updates.actual_delivery_date = new Date().toISOString().split("T")[0];
       const { error: e1 } = await supabase.from("purchase_orders").update(updates).eq("id", orderId);
       if (e1) throw e1;
-      const { error: e2 } = await supabase.from("po_status_history").insert({ purchase_order_id: orderId, status: newStatus });
-      if (e2) throw e2;
+      await supabase.from("po_status_history").insert({ purchase_order_id: orderId, status: newStatus });
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["purchase_orders"] });
@@ -243,21 +239,33 @@ export default function PurchaseOrdersPage() {
     },
   });
 
-  const handleItemSelect = (itemId: string) => {
-    setLineForm(prev => ({ ...prev, item_id: itemId }));
-    // Auto-fill price from supplier_items if available
-    if (selectedSupplierId) {
-      const si = getSupplierPrice(itemId, selectedSupplierId);
-      if (si?.unit_price) {
-        setLineForm(prev => ({ ...prev, item_id: itemId, unit_price: String(si.unit_price) }));
-      }
-    }
-    // Fallback to item unit_cost
-    const item = items.find(i => i.id === itemId);
-    if (item?.unit_cost && !getSupplierPrice(itemId, selectedSupplierId || "")?.unit_price) {
-      setLineForm(prev => ({ ...prev, unit_price: String(item.unit_cost) }));
-    }
+  // --- HELPERS ---
+
+  const resetCreateForm = () => {
+    setCreateOpen(false);
+    setCreateStep(0);
+    setCreateLines([]);
+    setLineSearch("");
+    setForm({ supplier_id: "", currency: "EUR", incoterm: "EXW", shipping_port: "", requested_delivery_date: "", notes: "", is_pre_series: false });
   };
+
+  const toggleCreateLine = (itemId: string) => {
+    setCreateLines(prev => {
+      const existing = prev.find(l => l.item_id === itemId);
+      if (existing) return prev.filter(l => l.item_id !== itemId);
+      const item = items.find(i => i.id === itemId);
+      const si = form.supplier_id ? getSupplierPrice(itemId, form.supplier_id) : null;
+      const price = si?.unit_price ? String(si.unit_price) : item?.unit_cost ? String(item.unit_cost) : "0";
+      return [...prev, { item_id: itemId, quantity: "1", unit_price: price, discount_pct: "0", notes: "" }];
+    });
+  };
+
+  const updateCreateLine = (itemId: string, field: keyof LineEntry, value: string) => {
+    setCreateLines(prev => prev.map(l => l.item_id === itemId ? { ...l, [field]: value } : l));
+  };
+
+  const calcLineTotal = (l: LineEntry) =>
+    (parseFloat(l.quantity || "0") * parseFloat(l.unit_price || "0") * (1 - parseFloat(l.discount_pct || "0") / 100));
 
   const filtered = orders.filter(o => {
     const matchSearch = o.po_number.toLowerCase().includes(search.toLowerCase());
@@ -267,12 +275,19 @@ export default function PurchaseOrdersPage() {
 
   const getSupplierName = (id: string) => suppliers.find(s => s.id === id)?.company_name || "—";
   const getStatusInfo = (status: string) => PO_STATUSES.find(s => s.value === status) || PO_STATUSES[0];
+  const getItem = (id: string) => items.find(i => i.id === id);
 
-  // Items filtered for add-line dialog
-  const filteredItems = items.filter(i =>
+  const filteredCreateItems = items.filter(i =>
     i.item_code.toLowerCase().includes(lineSearch.toLowerCase()) ||
     i.description.toLowerCase().includes(lineSearch.toLowerCase())
   );
+
+  const filteredDetailItems = items.filter(i =>
+    i.item_code.toLowerCase().includes(detailLineSearch.toLowerCase()) ||
+    i.description.toLowerCase().includes(detailLineSearch.toLowerCase())
+  );
+
+  const createTotal = createLines.reduce((sum, l) => sum + calcLineTotal(l), 0);
 
   return (
     <div className="space-y-6">
@@ -282,7 +297,7 @@ export default function PurchaseOrdersPage() {
           <p className="text-sm text-muted-foreground">{orders.length} ordini</p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" onClick={() => setCsvOpen(true)} className="gap-2"><Upload className="h-4 w-4" /> Importa CSV</Button>
+          <Button variant="outline" onClick={() => setCsvOpen(true)} className="gap-2"><Upload className="h-4 w-4" /> Importa</Button>
           <Button onClick={() => setCreateOpen(true)} className="gap-2"><Plus className="h-4 w-4" /> Nuovo PO</Button>
         </div>
       </div>
@@ -298,7 +313,7 @@ export default function PurchaseOrdersPage() {
           <div className="flex gap-3">
             <div className="relative flex-1 max-w-sm">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input placeholder="Cerca numero PO..." className="pl-9 font-mono text-sm" value={search} onChange={(e) => setSearch(e.target.value)} />
+              <Input placeholder="Cerca PO..." className="pl-9 font-mono text-sm" value={search} onChange={e => setSearch(e.target.value)} />
             </div>
             <Select value={statusFilter} onValueChange={setStatusFilter}>
               <SelectTrigger className="w-48"><SelectValue /></SelectTrigger>
@@ -314,7 +329,7 @@ export default function PurchaseOrdersPage() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-border bg-muted/30">
-                    {["N° PO", "Fornitore", "Stato", "Data Ordine", "Consegna Richiesta", "Consegna Effettiva", "Lead Time", "Totale", ""].map(h => (
+                    {["N° PO", "Fornitore", "Stato", "Data Ordine", "Consegna Rich.", "Consegna Eff.", "LT", "Totale", ""].map(h => (
                       <th key={h} className="text-left p-3 text-muted-foreground text-xs uppercase tracking-wider font-mono font-medium">{h}</th>
                     ))}
                   </tr>
@@ -327,10 +342,9 @@ export default function PurchaseOrdersPage() {
                   ) : filtered.map(o => {
                     const si = getStatusInfo(o.status);
                     const lt = o.order_date && o.actual_delivery_date
-                      ? Math.round((new Date(o.actual_delivery_date).getTime() - new Date(o.order_date).getTime()) / (1000 * 60 * 60 * 24))
-                      : null;
+                      ? Math.round((new Date(o.actual_delivery_date).getTime() - new Date(o.order_date).getTime()) / 86400000) : null;
                     return (
-                      <tr key={o.id} className="hover:bg-muted/20 transition-colors">
+                      <tr key={o.id} className="hover:bg-muted/20 transition-colors cursor-pointer" onClick={() => setDetailId(o.id)}>
                         <td className="p-3 font-mono text-primary font-medium">{o.po_number}</td>
                         <td className="p-3 text-foreground">{getSupplierName(o.supplier_id)}</td>
                         <td className="p-3"><Badge className={cn("text-xs", si.color)}>{si.label}</Badge></td>
@@ -338,18 +352,10 @@ export default function PurchaseOrdersPage() {
                         <td className="p-3 font-mono text-xs text-muted-foreground">{o.requested_delivery_date || "—"}</td>
                         <td className="p-3 font-mono text-xs text-muted-foreground">{o.actual_delivery_date || "—"}</td>
                         <td className="p-3 font-mono text-xs">
-                          {lt !== null ? (
-                            <Badge variant="outline" className={cn("font-mono", lt > 30 ? "border-destructive text-destructive" : "border-primary text-primary")}>
-                              {lt}gg
-                            </Badge>
-                          ) : "—"}
+                          {lt !== null ? <Badge variant="outline" className={cn("font-mono", lt > 30 ? "border-destructive text-destructive" : "border-primary text-primary")}>{lt}gg</Badge> : "—"}
                         </td>
                         <td className="p-3 font-mono text-foreground">€{Number(o.total_amount || 0).toLocaleString()}</td>
-                        <td className="p-3">
-                          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setDetailId(o.id)}>
-                            <Eye className="h-4 w-4" />
-                          </Button>
-                        </td>
+                        <td className="p-3"><Eye className="h-4 w-4 text-muted-foreground" /></td>
                       </tr>
                     );
                   })}
@@ -360,37 +366,31 @@ export default function PurchaseOrdersPage() {
         </TabsContent>
 
         {/* LEAD TIME TAB */}
-        <TabsContent value="leadtime" className="space-y-4">
+        <TabsContent value="leadtime">
           <div className="bg-card border border-border rounded-lg overflow-hidden">
             <div className="p-4 border-b border-border">
-              <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
-                <Clock className="h-4 w-4 text-primary" /> Lead Time per Componente
-              </h3>
-              <p className="text-xs text-muted-foreground mt-1">Calcolato da data ordine a data consegna effettiva</p>
+              <h3 className="text-sm font-semibold text-foreground flex items-center gap-2"><Clock className="h-4 w-4 text-primary" /> Lead Time per Componente</h3>
+              <p className="text-xs text-muted-foreground mt-1">Da data ordine a consegna effettiva</p>
             </div>
             <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border bg-muted/30">
-                  {["Codice", "Descrizione", "N° Ordini", "LT Medio (gg)", "LT Min", "LT Max"].map(h => (
-                    <th key={h} className="text-left p-3 text-muted-foreground text-xs uppercase tracking-wider font-mono">{h}</th>
-                  ))}
-                </tr>
-              </thead>
+              <thead><tr className="border-b border-border bg-muted/30">
+                {["Codice", "Descrizione", "Ordini", "LT Medio", "Min", "Max"].map(h => (
+                  <th key={h} className="text-left p-3 text-muted-foreground text-xs uppercase tracking-wider font-mono">{h}</th>
+                ))}
+              </tr></thead>
               <tbody className="divide-y divide-border">
                 {Object.keys(leadTimeStats).length === 0 ? (
-                  <tr><td colSpan={6} className="p-8 text-center text-muted-foreground text-xs">
-                    Nessun dato. Segna gli ordini come "Consegnato" per calcolare il lead time.
-                  </td></tr>
+                  <tr><td colSpan={6} className="p-8 text-center text-muted-foreground text-xs">Segna ordini come "Consegnato" per calcolare il lead time.</td></tr>
                 ) : Object.entries(leadTimeStats).map(([itemId, s]) => {
-                  const item = items.find(i => i.id === itemId);
+                  const item = getItem(itemId);
                   return (
                     <tr key={itemId} className="hover:bg-muted/20">
                       <td className="p-3 font-mono text-primary text-xs">{item?.item_code || "?"}</td>
                       <td className="p-3 text-foreground text-xs">{item?.description || ""}</td>
                       <td className="p-3 font-mono text-xs text-muted-foreground">{s.count}</td>
-                      <td className="p-3 font-mono text-foreground font-medium">{Math.round(s.avg)}</td>
-                      <td className="p-3 font-mono text-xs text-muted-foreground">{s.min === Infinity ? "—" : s.min}</td>
-                      <td className="p-3 font-mono text-xs text-muted-foreground">{s.max || "—"}</td>
+                      <td className="p-3 font-mono text-foreground font-medium">{Math.round(s.avg)}gg</td>
+                      <td className="p-3 font-mono text-xs text-muted-foreground">{s.min === Infinity ? "—" : `${s.min}gg`}</td>
+                      <td className="p-3 font-mono text-xs text-muted-foreground">{s.max ? `${s.max}gg` : "—"}</td>
                     </tr>
                   );
                 })}
@@ -400,27 +400,20 @@ export default function PurchaseOrdersPage() {
         </TabsContent>
 
         {/* CYCLE TIME TAB */}
-        <TabsContent value="cycle" className="space-y-4">
+        <TabsContent value="cycle">
           <div className="bg-card border border-border rounded-lg overflow-hidden">
             <div className="p-4 border-b border-border">
-              <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
-                <TrendingUp className="h-4 w-4 text-primary" /> Ciclo Completo: Ordine → Produzione → Prodotto Finito
-              </h3>
-              <p className="text-xs text-muted-foreground mt-1">Tempo totale dall'ordine fornitore al completamento della produzione</p>
+              <h3 className="text-sm font-semibold text-foreground flex items-center gap-2"><TrendingUp className="h-4 w-4 text-primary" /> Ordine → Produzione → Prodotto Finito</h3>
             </div>
             <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border bg-muted/30">
-                  {["Prodotto", "WO", "PO", "Data Ordine", "Consegna Mat.", "Fine Produzione", "LT Fornitura", "Tempo Prod.", "Totale"].map(h => (
-                    <th key={h} className="text-left p-3 text-muted-foreground text-xs uppercase tracking-wider font-mono">{h}</th>
-                  ))}
-                </tr>
-              </thead>
+              <thead><tr className="border-b border-border bg-muted/30">
+                {["Prodotto", "WO", "PO", "Ordine", "Consegna", "Fine Prod.", "LT Forn.", "Prod.", "Totale"].map(h => (
+                  <th key={h} className="text-left p-3 text-muted-foreground text-xs uppercase tracking-wider font-mono">{h}</th>
+                ))}
+              </tr></thead>
               <tbody className="divide-y divide-border">
                 {cycleTimeStats.length === 0 ? (
-                  <tr><td colSpan={9} className="p-8 text-center text-muted-foreground text-xs">
-                    Nessun dato. Completa ordini di produzione con date effettive per vedere il ciclo completo.
-                  </td></tr>
+                  <tr><td colSpan={9} className="p-8 text-center text-muted-foreground text-xs">Completa ordini di produzione per vedere i dati.</td></tr>
                 ) : cycleTimeStats.map((c, i) => (
                   <tr key={i} className="hover:bg-muted/20">
                     <td className="p-3 font-mono text-primary text-xs">{c.productName}</td>
@@ -429,17 +422,9 @@ export default function PurchaseOrdersPage() {
                     <td className="p-3 font-mono text-xs text-muted-foreground">{c.orderDate}</td>
                     <td className="p-3 font-mono text-xs text-muted-foreground">{c.deliveryDate}</td>
                     <td className="p-3 font-mono text-xs text-muted-foreground">{c.productionEnd}</td>
-                    <td className="p-3">
-                      <Badge variant="outline" className="font-mono text-xs">{c.leadTimeDays}gg</Badge>
-                    </td>
-                    <td className="p-3">
-                      <Badge variant="outline" className="font-mono text-xs">{c.productionDays}gg</Badge>
-                    </td>
-                    <td className="p-3">
-                      <Badge className={cn("font-mono text-xs", c.totalDays > 60 ? "status-critical" : c.totalDays > 30 ? "status-warning" : "status-ok")}>
-                        {c.totalDays}gg
-                      </Badge>
-                    </td>
+                    <td className="p-3"><Badge variant="outline" className="font-mono text-xs">{c.leadTimeDays}gg</Badge></td>
+                    <td className="p-3"><Badge variant="outline" className="font-mono text-xs">{c.productionDays}gg</Badge></td>
+                    <td className="p-3"><Badge className={cn("font-mono text-xs", c.totalDays > 60 ? "status-critical" : c.totalDays > 30 ? "status-warning" : "status-ok")}>{c.totalDays}gg</Badge></td>
                   </tr>
                 ))}
               </tbody>
@@ -448,7 +433,228 @@ export default function PurchaseOrdersPage() {
         </TabsContent>
       </Tabs>
 
-      {/* PO Detail Dialog */}
+      {/* ========== CREATE PO - MULTI STEP ========== */}
+      <Dialog open={createOpen} onOpenChange={(open) => { if (!open) resetCreateForm(); else setCreateOpen(true); }}>
+        <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-3">
+              Nuovo Ordine Fornitore
+              <div className="flex items-center gap-1 ml-auto">
+                {["Intestazione", "Prodotti", "Riepilogo"].map((s, i) => (
+                  <span key={s} className={cn("text-[10px] px-2 py-0.5 rounded font-mono", createStep === i ? "bg-primary text-primary-foreground" : "bg-muted/30 text-muted-foreground")}>{s}</span>
+                ))}
+              </div>
+            </DialogTitle>
+          </DialogHeader>
+
+          {/* STEP 0: Header */}
+          {createStep === 0 && (
+            <div className="space-y-4">
+              <div>
+                <Label>Fornitore *</Label>
+                <Select value={form.supplier_id} onValueChange={v => setForm({ ...form, supplier_id: v })}>
+                  <SelectTrigger><SelectValue placeholder="Seleziona fornitore..." /></SelectTrigger>
+                  <SelectContent>{suppliers.map(s => <SelectItem key={s.id} value={s.id}>{s.company_name}</SelectItem>)}</SelectContent>
+                </Select>
+              </div>
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <Label>Valuta</Label>
+                  <Select value={form.currency} onValueChange={v => setForm({ ...form, currency: v })}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {["EUR", "USD", "GBP", "CNY"].map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label>Incoterm</Label>
+                  <Select value={form.incoterm} onValueChange={v => setForm({ ...form, incoterm: v })}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>{INCOTERMS.map(i => <SelectItem key={i} value={i}>{i}</SelectItem>)}</SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label>Consegna richiesta</Label>
+                  <Input type="date" className="font-mono" value={form.requested_delivery_date} onChange={e => setForm({ ...form, requested_delivery_date: e.target.value })} />
+                </div>
+              </div>
+              <div>
+                <Label>Porto di Spedizione</Label>
+                <Input value={form.shipping_port} onChange={e => setForm({ ...form, shipping_port: e.target.value })} />
+              </div>
+              <div className="flex items-center gap-2 p-3 bg-muted/20 rounded-lg">
+                <Checkbox checked={form.is_pre_series} onCheckedChange={(v) => setForm({ ...form, is_pre_series: !!v })} id="preseries" />
+                <Label htmlFor="preseries" className="cursor-pointer text-sm">
+                  Ordine Pre-Serie <span className="text-muted-foreground text-xs ml-1">— aggiunge step "Pre-Serie" prima della produzione</span>
+                </Label>
+              </div>
+              <div>
+                <Label>Note</Label>
+                <Textarea value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} rows={2} />
+              </div>
+              <div className="flex justify-end gap-2">
+                <Button variant="outline" onClick={resetCreateForm}>Annulla</Button>
+                <Button disabled={!form.supplier_id} onClick={() => setCreateStep(1)} className="gap-1">
+                  Avanti — Prodotti <Package className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {/* STEP 1: Select products */}
+          {createStep === 1 && (
+            <div className="space-y-4">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input placeholder="Cerca articoli per codice o descrizione..." className="pl-9 text-sm" value={lineSearch} onChange={e => setLineSearch(e.target.value)} />
+              </div>
+
+              <div className="max-h-64 overflow-y-auto border border-border rounded-lg divide-y divide-border">
+                {filteredCreateItems.map(item => {
+                  const isSelected = createLines.some(l => l.item_id === item.id);
+                  const si = getSupplierPrice(item.id, form.supplier_id);
+                  const lt = leadTimeStats[item.id];
+                  return (
+                    <div key={item.id} className={cn("flex items-center gap-3 p-3 hover:bg-muted/30 transition-colors cursor-pointer", isSelected && "bg-primary/10")}
+                      onClick={() => toggleCreateLine(item.id)}>
+                      <Checkbox checked={isSelected} className="pointer-events-none" />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono text-xs text-primary font-medium">{item.item_code}</span>
+                          <span className="text-xs text-foreground truncate">{item.description}</span>
+                          {item.item_type && <Badge variant="outline" className="text-[10px] shrink-0">{item.item_type}</Badge>}
+                        </div>
+                        <div className="flex items-center gap-3 mt-0.5">
+                          {si?.unit_price && <span className="text-[10px] text-primary font-mono">€{Number(si.unit_price).toFixed(2)}</span>}
+                          {!si?.unit_price && item.unit_cost ? <span className="text-[10px] text-muted-foreground font-mono">€{Number(item.unit_cost).toFixed(2)}</span> : null}
+                          {si?.moq && <span className="text-[10px] text-muted-foreground font-mono">MOQ:{si.moq}</span>}
+                          {si?.lead_time_days && <span className="text-[10px] text-muted-foreground font-mono">LT:{si.lead_time_days}gg</span>}
+                          {lt && <span className="text-[10px] text-muted-foreground font-mono">LT reale:~{Math.round(lt.avg)}gg</span>}
+                        </div>
+                      </div>
+                      {isSelected && <Check className="h-4 w-4 text-primary shrink-0" />}
+                    </div>
+                  );
+                })}
+                {filteredCreateItems.length === 0 && <div className="p-4 text-center text-muted-foreground text-xs">Nessun articolo trovato</div>}
+              </div>
+
+              {/* Selected items with quantity/price */}
+              {createLines.length > 0 && (
+                <div className="space-y-2">
+                  <h4 className="text-xs font-mono uppercase tracking-wider text-muted-foreground">
+                    {createLines.length} articol{createLines.length > 1 ? "i" : "o"} selezionat{createLines.length > 1 ? "i" : "o"}
+                  </h4>
+                  <div className="space-y-2">
+                    {createLines.map(line => {
+                      const item = getItem(line.item_id);
+                      return (
+                        <div key={line.item_id} className="p-3 bg-muted/20 rounded-lg space-y-2">
+                          <div className="flex items-center justify-between">
+                            <span className="font-mono text-xs text-primary">{item?.item_code}</span>
+                            <span className="text-xs text-foreground">{item?.description}</span>
+                          </div>
+                          <div className="grid grid-cols-4 gap-2">
+                            <div>
+                              <Label className="text-[10px]">Qtà</Label>
+                              <Input type="number" step="0.01" className="font-mono h-8 text-xs" value={line.quantity} onChange={e => updateCreateLine(line.item_id, "quantity", e.target.value)} />
+                            </div>
+                            <div>
+                              <Label className="text-[10px]">Prezzo €</Label>
+                              <Input type="number" step="0.01" className="font-mono h-8 text-xs" value={line.unit_price} onChange={e => updateCreateLine(line.item_id, "unit_price", e.target.value)} />
+                            </div>
+                            <div>
+                              <Label className="text-[10px]">Sconto %</Label>
+                              <Input type="number" step="0.01" className="font-mono h-8 text-xs" value={line.discount_pct} onChange={e => updateCreateLine(line.item_id, "discount_pct", e.target.value)} />
+                            </div>
+                            <div className="flex items-end">
+                              <span className="text-xs font-mono text-foreground font-semibold pb-1.5">€{calcLineTotal(line).toFixed(2)}</span>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              <div className="flex justify-between items-center">
+                <Button variant="outline" onClick={() => setCreateStep(0)}>← Indietro</Button>
+                <div className="flex items-center gap-3">
+                  {createLines.length > 0 && <span className="font-mono text-sm text-foreground">Totale: <strong>€{createTotal.toFixed(2)}</strong></span>}
+                  <Button disabled={createLines.length === 0} onClick={() => setCreateStep(2)}>Riepilogo →</Button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* STEP 2: Review */}
+          {createStep === 2 && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="bg-muted/20 rounded-lg p-3">
+                  <span className="text-[10px] text-muted-foreground font-mono uppercase">Fornitore</span>
+                  <p className="text-sm text-foreground">{getSupplierName(form.supplier_id)}</p>
+                </div>
+                <div className="bg-muted/20 rounded-lg p-3">
+                  <span className="text-[10px] text-muted-foreground font-mono uppercase">Condizioni</span>
+                  <p className="text-sm text-foreground">{form.currency} · {form.incoterm}</p>
+                </div>
+                {form.requested_delivery_date && (
+                  <div className="bg-muted/20 rounded-lg p-3">
+                    <span className="text-[10px] text-muted-foreground font-mono uppercase">Consegna</span>
+                    <p className="text-sm font-mono text-foreground">{form.requested_delivery_date}</p>
+                  </div>
+                )}
+                {form.is_pre_series && (
+                  <div className="bg-purple-500/10 rounded-lg p-3 border border-purple-500/20">
+                    <span className="text-[10px] text-purple-300 font-mono uppercase">Pre-Serie</span>
+                    <p className="text-sm text-purple-200">Step pre-serie incluso</p>
+                  </div>
+                )}
+              </div>
+
+              <table className="w-full text-sm">
+                <thead><tr className="border-b border-border">
+                  <th className="text-left p-2 text-muted-foreground text-xs font-mono">Articolo</th>
+                  <th className="text-right p-2 text-muted-foreground text-xs font-mono">Qtà</th>
+                  <th className="text-right p-2 text-muted-foreground text-xs font-mono">Prezzo</th>
+                  <th className="text-right p-2 text-muted-foreground text-xs font-mono">Sconto</th>
+                  <th className="text-right p-2 text-muted-foreground text-xs font-mono">Totale</th>
+                </tr></thead>
+                <tbody className="divide-y divide-border">
+                  {createLines.map(line => {
+                    const item = getItem(line.item_id);
+                    return (
+                      <tr key={line.item_id}>
+                        <td className="p-2"><span className="font-mono text-xs text-primary">{item?.item_code}</span> <span className="text-xs text-muted-foreground">{item?.description}</span></td>
+                        <td className="p-2 text-right font-mono text-xs">{line.quantity}</td>
+                        <td className="p-2 text-right font-mono text-xs">€{parseFloat(line.unit_price).toFixed(2)}</td>
+                        <td className="p-2 text-right font-mono text-xs text-muted-foreground">{line.discount_pct}%</td>
+                        <td className="p-2 text-right font-mono text-xs font-medium">€{calcLineTotal(line).toFixed(2)}</td>
+                      </tr>
+                    );
+                  })}
+                  <tr className="bg-muted/20">
+                    <td colSpan={4} className="p-2 text-right font-mono text-xs text-muted-foreground uppercase">Totale Ordine</td>
+                    <td className="p-2 text-right font-mono font-bold text-foreground">€{createTotal.toFixed(2)}</td>
+                  </tr>
+                </tbody>
+              </table>
+
+              <div className="flex justify-between">
+                <Button variant="outline" onClick={() => setCreateStep(1)}>← Modifica</Button>
+                <Button onClick={() => createMut.mutate()} disabled={createMut.isPending} className="gap-1">
+                  <Check className="h-4 w-4" /> Crea Ordine
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* ========== PO DETAIL ========== */}
       <Dialog open={!!detailId} onOpenChange={() => setDetailId(null)}>
         <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
           {selectedOrder && (
@@ -460,7 +666,6 @@ export default function PurchaseOrdersPage() {
                 </DialogTitle>
               </DialogHeader>
 
-              {/* Dates summary */}
               <div className="grid grid-cols-3 gap-3 text-xs">
                 <div className="bg-muted/30 rounded-lg p-3">
                   <span className="text-muted-foreground block font-mono uppercase tracking-wider mb-1">Data Ordine</span>
@@ -475,38 +680,32 @@ export default function PurchaseOrdersPage() {
                   <span className="font-mono text-foreground">{selectedOrder.actual_delivery_date || "In attesa"}</span>
                   {selectedOrder.order_date && selectedOrder.actual_delivery_date && (
                     <Badge variant="outline" className="mt-1 font-mono text-[10px]">
-                      LT: {Math.round((new Date(selectedOrder.actual_delivery_date).getTime() - new Date(selectedOrder.order_date).getTime()) / (1000 * 60 * 60 * 24))}gg
+                      LT: {Math.round((new Date(selectedOrder.actual_delivery_date).getTime() - new Date(selectedOrder.order_date).getTime()) / 86400000)}gg
                     </Badge>
                   )}
                 </div>
               </div>
 
-              {/* Status Timeline */}
+              {/* Timeline */}
               <div className="bg-muted/30 rounded-lg p-4">
-                <h3 className="text-xs font-mono uppercase tracking-wider text-muted-foreground mb-3">Timeline Stati</h3>
+                <h3 className="text-xs font-mono uppercase tracking-wider text-muted-foreground mb-3">Timeline</h3>
                 <div className="flex items-center gap-1 overflow-x-auto pb-2">
-                  {PO_STATUSES.filter(s => s.value !== "cancelled").map((s, i) => {
+                  {PO_STATUSES.filter(s => s.value !== "cancelled").map((s, i, arr) => {
                     const historyEntry = statusHistory.find(h => h.status === s.value);
                     const isCurrent = selectedOrder.status === s.value;
                     const isPast = !!historyEntry;
                     return (
                       <div key={s.value} className="flex items-center gap-1">
                         <button
-                          onClick={() => {
-                            if (!isCurrent) {
-                              changeStatusMut.mutate({ orderId: selectedOrder.id, newStatus: s.value });
-                            }
-                          }}
+                          onClick={() => { if (!isCurrent) changeStatusMut.mutate({ orderId: selectedOrder.id, newStatus: s.value }); }}
                           className={cn(
                             "px-2 py-1 rounded text-[10px] font-mono whitespace-nowrap transition-colors",
                             isCurrent && "bg-primary text-primary-foreground",
                             isPast && !isCurrent && "bg-muted text-foreground/60",
                             !isPast && !isCurrent && "bg-muted/20 text-muted-foreground hover:bg-muted/50 cursor-pointer"
                           )}
-                        >
-                          {s.label}
-                        </button>
-                        {i < PO_STATUSES.length - 2 && <span className="text-muted-foreground/30">→</span>}
+                        >{s.label}</button>
+                        {i < arr.length - 1 && <span className="text-muted-foreground/30">→</span>}
                       </div>
                     );
                   })}
@@ -524,46 +723,38 @@ export default function PurchaseOrdersPage() {
                 )}
               </div>
 
-              {/* PO Lines */}
+              {/* Lines */}
               <div>
                 <div className="flex items-center justify-between mb-2">
                   <h3 className="text-xs font-mono uppercase tracking-wider text-muted-foreground">Righe Ordine</h3>
-                  <Button size="sm" onClick={() => setAddLineOpen(true)} className="gap-1 h-7 text-xs"><Plus className="h-3 w-3" /> Riga</Button>
+                  <Button size="sm" onClick={() => setAddLineOpen(true)} className="gap-1 h-7 text-xs"><Plus className="h-3 w-3" /> Aggiungi</Button>
                 </div>
                 <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-border">
-                      <th className="text-left p-2 text-muted-foreground text-xs font-mono">Articolo</th>
-                      <th className="text-left p-2 text-muted-foreground text-xs font-mono">Descrizione</th>
-                      <th className="text-right p-2 text-muted-foreground text-xs font-mono">Qtà</th>
-                      <th className="text-right p-2 text-muted-foreground text-xs font-mono">Prezzo Unit.</th>
-                      <th className="text-right p-2 text-muted-foreground text-xs font-mono">Sconto %</th>
-                      <th className="text-right p-2 text-muted-foreground text-xs font-mono">Totale Riga</th>
-                    </tr>
-                  </thead>
+                  <thead><tr className="border-b border-border">
+                    {["Articolo", "Descrizione", "Qtà", "Prezzo", "Sconto", "Totale"].map(h => (
+                      <th key={h} className="text-left p-2 text-muted-foreground text-xs font-mono">{h}</th>
+                    ))}
+                  </tr></thead>
                   <tbody className="divide-y divide-border">
                     {poLines.length === 0 ? (
                       <tr><td colSpan={6} className="p-4 text-center text-muted-foreground text-xs">Nessuna riga</td></tr>
                     ) : poLines.map(line => {
-                      const item = items.find(i => i.id === line.item_id);
-                      const lt = leadTimeStats[line.item_id];
+                      const item = getItem(line.item_id);
                       return (
                         <tr key={line.id}>
                           <td className="p-2 font-mono text-xs text-primary">{item?.item_code || "?"}</td>
                           <td className="p-2 text-xs text-muted-foreground">{item?.description || ""}</td>
-                          <td className="p-2 text-right font-mono">{Number(line.quantity)}</td>
-                          <td className="p-2 text-right font-mono">€{Number(line.unit_price).toFixed(2)}</td>
-                          <td className="p-2 text-right font-mono text-muted-foreground">{Number(line.discount_pct)}%</td>
-                          <td className="p-2 text-right font-mono text-foreground">€{Number(line.line_total || 0).toFixed(2)}</td>
+                          <td className="p-2 text-right font-mono text-xs">{Number(line.quantity)}</td>
+                          <td className="p-2 text-right font-mono text-xs">€{Number(line.unit_price).toFixed(2)}</td>
+                          <td className="p-2 text-right font-mono text-xs text-muted-foreground">{Number(line.discount_pct)}%</td>
+                          <td className="p-2 text-right font-mono text-xs font-medium">€{Number(line.line_total || 0).toFixed(2)}</td>
                         </tr>
                       );
                     })}
                     {poLines.length > 0 && (
                       <tr className="bg-muted/20">
                         <td colSpan={5} className="p-2 text-right font-mono text-xs text-muted-foreground uppercase">Totale</td>
-                        <td className="p-2 text-right font-mono font-semibold text-foreground">
-                          €{poLines.reduce((sum, l) => sum + Number(l.line_total || 0), 0).toFixed(2)}
-                        </td>
+                        <td className="p-2 text-right font-mono font-bold text-foreground">€{poLines.reduce((s, l) => s + Number(l.line_total || 0), 0).toFixed(2)}</td>
                       </tr>
                     )}
                   </tbody>
@@ -574,143 +765,51 @@ export default function PurchaseOrdersPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Create PO */}
-      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader><DialogTitle>Nuovo Ordine Fornitore</DialogTitle></DialogHeader>
-          <form onSubmit={(e) => { e.preventDefault(); createMut.mutate(); }} className="space-y-4">
-            <div>
-              <Label>Fornitore *</Label>
-              <Select value={form.supplier_id} onValueChange={(v) => setForm({ ...form, supplier_id: v })}>
-                <SelectTrigger><SelectValue placeholder="Seleziona..." /></SelectTrigger>
-                <SelectContent>{suppliers.map(s => <SelectItem key={s.id} value={s.id}>{s.company_name}</SelectItem>)}</SelectContent>
-              </Select>
-            </div>
-            <div className="grid grid-cols-3 gap-3">
-              <div>
-                <Label>Valuta</Label>
-                <Select value={form.currency} onValueChange={(v) => setForm({ ...form, currency: v })}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="EUR">EUR</SelectItem><SelectItem value="USD">USD</SelectItem><SelectItem value="GBP">GBP</SelectItem><SelectItem value="CNY">CNY</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label>Incoterm</Label>
-                <Select value={form.incoterm} onValueChange={(v) => setForm({ ...form, incoterm: v })}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>{INCOTERMS.map(i => <SelectItem key={i} value={i}>{i}</SelectItem>)}</SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label>Consegna</Label>
-                <Input type="date" className="font-mono" value={form.requested_delivery_date} onChange={(e) => setForm({ ...form, requested_delivery_date: e.target.value })} />
-              </div>
-            </div>
-            <div>
-              <Label>Porto di Spedizione</Label>
-              <Input value={form.shipping_port} onChange={(e) => setForm({ ...form, shipping_port: e.target.value })} />
-            </div>
-            <div>
-              <Label>Note</Label>
-              <Textarea value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} rows={2} />
-            </div>
-            <div className="flex justify-end gap-2">
-              <Button type="button" variant="outline" onClick={() => setCreateOpen(false)}>Annulla</Button>
-              <Button type="submit" disabled={!form.supplier_id || createMut.isPending}>Crea Ordine</Button>
-            </div>
-          </form>
-        </DialogContent>
-      </Dialog>
-
-      {/* Add PO Line - Enhanced with item browser */}
+      {/* ADD LINE TO EXISTING PO */}
       <Dialog open={addLineOpen} onOpenChange={setAddLineOpen}>
         <DialogContent className="max-w-2xl">
-          <DialogHeader><DialogTitle>Aggiungi Riga Ordine</DialogTitle></DialogHeader>
-          <form onSubmit={(e) => { e.preventDefault(); addLineMut.mutate(); }} className="space-y-4">
-            {/* Item search & selection */}
-            <div>
-              <Label>Cerca Articolo *</Label>
-              <div className="relative mb-2">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input placeholder="Cerca per codice o descrizione..." className="pl-9 text-sm" value={lineSearch} onChange={e => setLineSearch(e.target.value)} />
-              </div>
-              <div className="max-h-48 overflow-y-auto border border-border rounded-lg divide-y divide-border">
-                {filteredItems.map(item => {
-                  const isSelected = lineForm.item_id === item.id;
-                  const si = selectedSupplierId ? getSupplierPrice(item.id, selectedSupplierId) : null;
-                  const lt = leadTimeStats[item.id];
-                  return (
-                    <button
-                      key={item.id}
-                      type="button"
-                      onClick={() => handleItemSelect(item.id)}
-                      className={cn(
-                        "w-full text-left p-3 flex items-center justify-between hover:bg-muted/30 transition-colors",
-                        isSelected && "bg-primary/10 border-l-2 border-primary"
-                      )}
-                    >
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2">
-                          <span className="font-mono text-xs text-primary font-medium">{item.item_code}</span>
-                          <span className="text-xs text-foreground">{item.description}</span>
-                          {item.item_type && <Badge variant="outline" className="text-[10px]">{item.item_type}</Badge>}
-                        </div>
-                        <div className="flex items-center gap-3 mt-1">
-                          {item.unit_cost ? <span className="text-[10px] text-muted-foreground font-mono">Costo: €{Number(item.unit_cost).toFixed(2)}</span> : null}
-                          {si?.unit_price ? <span className="text-[10px] text-primary font-mono">Prezzo fornitore: €{Number(si.unit_price).toFixed(2)}</span> : null}
-                          {si?.moq ? <span className="text-[10px] text-muted-foreground font-mono">MOQ: {si.moq}</span> : null}
-                          {si?.lead_time_days ? <span className="text-[10px] text-muted-foreground font-mono">LT: {si.lead_time_days}gg</span> : null}
-                          {lt ? <span className="text-[10px] text-muted-foreground font-mono">LT reale: ~{Math.round(lt.avg)}gg</span> : null}
-                        </div>
-                      </div>
-                      {isSelected && <Badge className="text-[10px] bg-primary text-primary-foreground">Selezionato</Badge>}
-                    </button>
-                  );
-                })}
-                {filteredItems.length === 0 && <div className="p-4 text-center text-muted-foreground text-xs">Nessun articolo trovato</div>}
-              </div>
+          <DialogHeader><DialogTitle>Aggiungi Riga</DialogTitle></DialogHeader>
+          <form onSubmit={e => { e.preventDefault(); addLineMut.mutate(); }} className="space-y-4">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input placeholder="Cerca articolo..." className="pl-9 text-sm" value={detailLineSearch} onChange={e => setDetailLineSearch(e.target.value)} />
             </div>
-
-            {/* Quantity, price, discount */}
-            {lineForm.item_id && (
-              <div className="grid grid-cols-3 gap-3 p-3 bg-muted/20 rounded-lg">
-                <div>
-                  <Label className="text-xs">Quantità</Label>
-                  <Input type="number" step="0.01" className="font-mono" value={lineForm.quantity} onChange={(e) => setLineForm({ ...lineForm, quantity: e.target.value })} />
-                </div>
-                <div>
-                  <Label className="text-xs">Prezzo Unitario (€)</Label>
-                  <Input type="number" step="0.01" className="font-mono" value={lineForm.unit_price} onChange={(e) => setLineForm({ ...lineForm, unit_price: e.target.value })} />
-                </div>
-                <div>
-                  <Label className="text-xs">Sconto %</Label>
-                  <Input type="number" step="0.01" className="font-mono" value={lineForm.discount_pct} onChange={(e) => setLineForm({ ...lineForm, discount_pct: e.target.value })} />
-                </div>
-                <div className="col-span-2">
-                  <Label className="text-xs">Note</Label>
-                  <Input value={lineForm.notes} onChange={(e) => setLineForm({ ...lineForm, notes: e.target.value })} />
-                </div>
-                <div className="flex items-end">
-                  <div className="text-xs text-muted-foreground font-mono">
-                    Totale: <span className="text-foreground font-semibold">
-                      €{(parseFloat(lineForm.quantity || "0") * parseFloat(lineForm.unit_price || "0") * (1 - parseFloat(lineForm.discount_pct || "0") / 100)).toFixed(2)}
-                    </span>
+            <div className="max-h-48 overflow-y-auto border border-border rounded-lg divide-y divide-border">
+              {filteredDetailItems.map(item => {
+                const isSelected = detailLineForm.item_id === item.id;
+                const si = selectedOrder ? getSupplierPrice(item.id, selectedOrder.supplier_id) : null;
+                return (
+                  <div key={item.id} className={cn("p-3 flex items-center gap-3 hover:bg-muted/30 cursor-pointer", isSelected && "bg-primary/10")}
+                    onClick={() => {
+                      const price = si?.unit_price ? String(si.unit_price) : item.unit_cost ? String(item.unit_cost) : "0";
+                      setDetailLineForm({ ...detailLineForm, item_id: item.id, unit_price: price });
+                    }}>
+                    <div className="flex-1">
+                      <span className="font-mono text-xs text-primary">{item.item_code}</span>
+                      <span className="text-xs text-foreground ml-2">{item.description}</span>
+                      {si?.unit_price && <span className="text-[10px] text-primary font-mono ml-2">€{Number(si.unit_price).toFixed(2)}</span>}
+                    </div>
+                    {isSelected && <Check className="h-4 w-4 text-primary" />}
                   </div>
-                </div>
+                );
+              })}
+            </div>
+            {detailLineForm.item_id && (
+              <div className="grid grid-cols-3 gap-3 p-3 bg-muted/20 rounded-lg">
+                <div><Label className="text-xs">Quantità</Label><Input type="number" step="0.01" className="font-mono h-8" value={detailLineForm.quantity} onChange={e => setDetailLineForm({ ...detailLineForm, quantity: e.target.value })} /></div>
+                <div><Label className="text-xs">Prezzo €</Label><Input type="number" step="0.01" className="font-mono h-8" value={detailLineForm.unit_price} onChange={e => setDetailLineForm({ ...detailLineForm, unit_price: e.target.value })} /></div>
+                <div><Label className="text-xs">Sconto %</Label><Input type="number" step="0.01" className="font-mono h-8" value={detailLineForm.discount_pct} onChange={e => setDetailLineForm({ ...detailLineForm, discount_pct: e.target.value })} /></div>
               </div>
             )}
-
             <div className="flex justify-end gap-2">
-              <Button type="button" variant="outline" onClick={() => { setAddLineOpen(false); setLineSearch(""); }}>Annulla</Button>
-              <Button type="submit" disabled={!lineForm.item_id || addLineMut.isPending}>Aggiungi Riga</Button>
+              <Button type="button" variant="outline" onClick={() => setAddLineOpen(false)}>Annulla</Button>
+              <Button type="submit" disabled={!detailLineForm.item_id || addLineMut.isPending}>Aggiungi</Button>
             </div>
           </form>
         </DialogContent>
       </Dialog>
 
-      <CsvImportDialog open={csvOpen} onOpenChange={setCsvOpen} title="Importa Ordini Fornitori da CSV"
+      <CsvImportDialog open={csvOpen} onOpenChange={setCsvOpen} title="Importa Ordini da CSV"
         expectedColumns={["fornitore", "valuta", "incoterm", "data_consegna", "note"]}
         onImport={async (rows) => {
           for (const r of rows) {
