@@ -1,7 +1,7 @@
 import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { Plus, Search, Eye, Upload, Clock, TrendingUp, Package, Check } from "lucide-react";
+import { Plus, Search, Eye, Upload, Clock, TrendingUp, Package, Check, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -11,6 +11,10 @@ import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
@@ -55,6 +59,7 @@ export default function PurchaseOrdersPage() {
   const [detailLineSearch, setDetailLineSearch] = useState("");
   const [detailLineForm, setDetailLineForm] = useState<LineEntry>({ item_id: "", quantity: "1", unit_price: "0", discount_pct: "0", notes: "" });
   const [csvOpen, setCsvOpen] = useState(false);
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const qc = useQueryClient();
 
   const { data: suppliers = [] } = useQuery({
@@ -239,6 +244,28 @@ export default function PurchaseOrdersPage() {
     },
   });
 
+  const deleteMut = useMutation({
+    mutationFn: async (orderId: string) => {
+      // Scollega i lotti inventario (FK nullable)
+      const { error: e0 } = await supabase.from("inventory_lots").update({ purchase_order_id: null }).eq("purchase_order_id", orderId);
+      if (e0) throw e0;
+      const { error: e1 } = await supabase.from("po_status_history").delete().eq("purchase_order_id", orderId);
+      if (e1) throw e1;
+      const { error: e2 } = await supabase.from("po_lines").delete().eq("purchase_order_id", orderId);
+      if (e2) throw e2;
+      const { error: e3 } = await supabase.from("purchase_orders").delete().eq("id", orderId);
+      if (e3) throw e3;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["purchase_orders"] });
+      qc.invalidateQueries({ queryKey: ["all_po_lines"] });
+      setDetailId(null);
+      setDeleteConfirmId(null);
+      toast.success("Ordine eliminato");
+    },
+    onError: (e) => toast.error((e as Error).message),
+  });
+
   // --- HELPERS ---
 
   const resetCreateForm = () => {
@@ -355,7 +382,16 @@ export default function PurchaseOrdersPage() {
                           {lt !== null ? <Badge variant="outline" className={cn("font-mono", lt > 30 ? "border-destructive text-destructive" : "border-primary text-primary")}>{lt}gg</Badge> : "—"}
                         </td>
                         <td className="p-3 font-mono text-foreground">€{Number(o.total_amount || 0).toLocaleString()}</td>
-                        <td className="p-3"><Eye className="h-4 w-4 text-muted-foreground" /></td>
+                        <td className="p-3 flex items-center gap-2">
+                          <Eye className="h-4 w-4 text-muted-foreground" />
+                          <button
+                            onClick={(e) => { e.stopPropagation(); setDeleteConfirmId(o.id); }}
+                            className="text-destructive/60 hover:text-destructive transition-colors"
+                            title="Elimina ordine"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </td>
                       </tr>
                     );
                   })}
@@ -663,6 +699,13 @@ export default function PurchaseOrdersPage() {
                 <DialogTitle className="flex items-center gap-3">
                   <span className="font-mono">{selectedOrder.po_number}</span>
                   <Badge className={cn("text-xs", getStatusInfo(selectedOrder.status).color)}>{getStatusInfo(selectedOrder.status).label}</Badge>
+                  <button
+                    onClick={() => setDeleteConfirmId(selectedOrder.id)}
+                    className="ml-auto text-destructive/60 hover:text-destructive transition-colors"
+                    title="Elimina ordine"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
                 </DialogTitle>
               </DialogHeader>
 
@@ -808,6 +851,26 @@ export default function PurchaseOrdersPage() {
           </form>
         </DialogContent>
       </Dialog>
+
+      <AlertDialog open={!!deleteConfirmId} onOpenChange={(open) => { if (!open) setDeleteConfirmId(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Eliminare l'ordine?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Questa operazione è irreversibile. L'ordine, le righe e lo storico stati verranno eliminati definitivamente.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Annulla</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => deleteConfirmId && deleteMut.mutate(deleteConfirmId)}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Elimina
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <CsvImportDialog open={csvOpen} onOpenChange={setCsvOpen} title="Importa Ordini da CSV"
         expectedColumns={["fornitore", "valuta", "incoterm", "data_consegna", "note"]}
