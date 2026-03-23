@@ -73,17 +73,24 @@ export default function BomPage() {
 
   const addLineMut = useMutation({
     mutationFn: async () => {
-      const { error } = await supabase.from("bom_lines").insert({
-        bom_header_id: selectedBom!, component_item_id: newLine.component_item_id,
-        quantity: parseFloat(newLine.quantity), waste_pct: parseFloat(newLine.waste_pct),
-        notes: newLine.notes || null, sort_order: bomLines.length,
-      });
+      const entries = Object.entries(selectedComponents);
+      if (entries.length === 0) throw new Error("Seleziona almeno un componente");
+      const rows = entries.map(([itemId, vals], idx) => ({
+        bom_header_id: selectedBom!,
+        component_item_id: itemId,
+        quantity: parseFloat(vals.quantity) || 1,
+        waste_pct: parseFloat(vals.waste_pct) || 0,
+        notes: vals.notes || null,
+        sort_order: bomLines.length + idx,
+      }));
+      const { error } = await supabase.from("bom_lines").insert(rows);
       if (error) throw error;
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["bom_lines", selectedBom] });
-      setAddLineOpen(false); setNewLine({ component_item_id: "", quantity: "1", waste_pct: "0", notes: "" });
-      toast.success("Componente aggiunto");
+      setAddLineOpen(false);
+      setSelectedComponents({});
+      toast.success("Componenti aggiunti");
     },
     onError: (e) => toast.error((e as Error).message),
   });
