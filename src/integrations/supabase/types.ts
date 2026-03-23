@@ -266,6 +266,7 @@ export type Database = {
           purchase_order_id: string
           quantity: number
           sort_order: number | null
+          supplier_item_id: string | null
           unit_price: number
         }
         Insert: {
@@ -278,6 +279,7 @@ export type Database = {
           purchase_order_id: string
           quantity: number
           sort_order?: number | null
+          supplier_item_id?: string | null
           unit_price: number
         }
         Update: {
@@ -290,6 +292,7 @@ export type Database = {
           purchase_order_id?: string
           quantity?: number
           sort_order?: number | null
+          supplier_item_id?: string | null
           unit_price?: number
         }
         Relationships: [
@@ -305,6 +308,13 @@ export type Database = {
             columns: ["purchase_order_id"]
             isOneToOne: false
             referencedRelation: "purchase_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "po_lines_supplier_item_id_fkey"
+            columns: ["supplier_item_id"]
+            isOneToOne: false
+            referencedRelation: "supplier_items"
             referencedColumns: ["id"]
           },
         ]
@@ -409,11 +419,13 @@ export type Database = {
       }
       purchase_orders: {
         Row: {
+          actual_delivery_date: string | null
           created_at: string
           currency: string | null
           id: string
           incoterm: string | null
           notes: string | null
+          order_date: string | null
           po_number: string
           requested_delivery_date: string | null
           shipping_port: string | null
@@ -423,11 +435,13 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          actual_delivery_date?: string | null
           created_at?: string
           currency?: string | null
           id?: string
           incoterm?: string | null
           notes?: string | null
+          order_date?: string | null
           po_number: string
           requested_delivery_date?: string | null
           shipping_port?: string | null
@@ -437,11 +451,13 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          actual_delivery_date?: string | null
           created_at?: string
           currency?: string | null
           id?: string
           incoterm?: string | null
           notes?: string | null
+          order_date?: string | null
           po_number?: string
           requested_delivery_date?: string | null
           shipping_port?: string | null
