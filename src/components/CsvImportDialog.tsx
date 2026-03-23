@@ -78,7 +78,7 @@ export default function CsvImportDialog({ open, onOpenChange, title, expectedCol
         <DialogHeader><DialogTitle>{title}</DialogTitle></DialogHeader>
         <div className="space-y-4">
           <div className="text-xs text-muted-foreground">
-            Formato CSV con separatore <code className="font-mono bg-muted px-1 rounded">;</code> — Colonne attese: <span className="font-mono text-primary">{expectedColumns.join("; ")}</span>
+            Formato CSV con separatore <code className="font-mono bg-muted px-1 rounded">;</code> o <code className="font-mono bg-muted px-1 rounded">,</code> (auto-rilevato) — Colonne attese: <span className="font-mono text-primary">{expectedColumns.join("; ")}</span>
           </div>
           <div className="flex items-center gap-3">
             <input ref={fileRef} type="file" accept=".csv,.txt" onChange={handleFile} className="text-sm file:mr-2 file:py-1 file:px-3 file:rounded file:border-0 file:text-xs file:bg-primary file:text-primary-foreground" />
