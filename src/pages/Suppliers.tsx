@@ -98,6 +98,7 @@ export default function SuppliersPage() {
   const [editSupplier, setEditSupplier] = useState<Supplier | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [form, setForm] = useState(emptySupplier);
+  const [csvOpen, setCsvOpen] = useState(false);
   const queryClient = useQueryClient();
 
   const { data: suppliers = [], isLoading } = useQuery({
