@@ -282,34 +282,55 @@ export default function BomPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Add Line Dialog */}
-      <Dialog open={addLineOpen} onOpenChange={setAddLineOpen}>
-        <DialogContent>
-          <DialogHeader><DialogTitle>Aggiungi Componente alla Distinta</DialogTitle></DialogHeader>
-          <form onSubmit={(e) => { e.preventDefault(); addLineMut.mutate(); }} className="space-y-4">
-            <div>
-              <Label>Componente *</Label>
-              <Select value={newLine.component_item_id} onValueChange={(v) => setNewLine({ ...newLine, component_item_id: v })}>
-                <SelectTrigger><SelectValue placeholder="Seleziona articolo..." /></SelectTrigger>
-                <SelectContent>{items.map((i: any) => <SelectItem key={i.id} value={i.id}>{i.item_code} — {i.description}</SelectItem>)}</SelectContent>
-              </Select>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Label>Quantità per 1 prodotto finito</Label>
-                <Input type="number" step="0.0001" className="font-mono" value={newLine.quantity} onChange={(e) => setNewLine({ ...newLine, quantity: e.target.value })} />
-              </div>
-              <div>
-                <Label>Scarto %</Label>
-                <Input type="number" step="0.01" className="font-mono" value={newLine.waste_pct} onChange={(e) => setNewLine({ ...newLine, waste_pct: e.target.value })} />
-              </div>
-            </div>
-            <div><Label>Note</Label><Input value={newLine.notes} onChange={(e) => setNewLine({ ...newLine, notes: e.target.value })} /></div>
-            <div className="flex justify-end gap-2">
-              <Button type="button" variant="outline" onClick={() => setAddLineOpen(false)}>Annulla</Button>
-              <Button type="submit" disabled={!newLine.component_item_id || addLineMut.isPending}>Aggiungi</Button>
-            </div>
-          </form>
+      {/* Add Lines Dialog — Multi-select */}
+      <Dialog open={addLineOpen} onOpenChange={(open) => { setAddLineOpen(open); if (!open) { setSelectedComponents({}); setSearchTerm(""); } }}>
+        <DialogContent className="max-w-2xl max-h-[80vh] flex flex-col">
+          <DialogHeader><DialogTitle>Aggiungi Componenti alla Distinta</DialogTitle></DialogHeader>
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input placeholder="Cerca articolo..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="pl-9" />
+          </div>
+          <div className="flex-1 overflow-y-auto border border-border rounded-lg divide-y divide-border max-h-[40vh]">
+            {items.filter((i: any) => {
+              const term = searchTerm.toLowerCase();
+              return !term || i.item_code.toLowerCase().includes(term) || i.description.toLowerCase().includes(term);
+            }).map((item: any) => {
+              const isSelected = !!selectedComponents[item.id];
+              return (
+                <div key={item.id} className={cn("flex items-center gap-3 p-3 hover:bg-muted/30 transition-colors", isSelected && "bg-muted/50")}>
+                  <Checkbox checked={isSelected} onCheckedChange={(checked) => {
+                    setSelectedComponents(prev => {
+                      if (checked) return { ...prev, [item.id]: { quantity: "1", waste_pct: "0", notes: "" } };
+                      const next = { ...prev }; delete next[item.id]; return next;
+                    });
+                  }} />
+                  <div className="flex-1 min-w-0">
+                    <span className="font-mono text-primary text-xs">{item.item_code}</span>
+                    <span className="text-foreground/70 text-xs ml-2">{item.description}</span>
+                  </div>
+                  {isSelected && (
+                    <div className="flex items-center gap-2">
+                      <Input type="number" step="0.0001" placeholder="Qtà" className="w-20 h-7 text-xs font-mono"
+                        value={selectedComponents[item.id].quantity}
+                        onChange={(e) => setSelectedComponents(prev => ({ ...prev, [item.id]: { ...prev[item.id], quantity: e.target.value } }))} />
+                      <Input type="number" step="0.01" placeholder="Scarto%" className="w-20 h-7 text-xs font-mono"
+                        value={selectedComponents[item.id].waste_pct}
+                        onChange={(e) => setSelectedComponents(prev => ({ ...prev, [item.id]: { ...prev[item.id], waste_pct: e.target.value } }))} />
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+          {Object.keys(selectedComponents).length > 0 && (
+            <div className="text-xs text-muted-foreground">{Object.keys(selectedComponents).length} componenti selezionati</div>
+          )}
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => { setAddLineOpen(false); setSelectedComponents({}); setSearchTerm(""); }}>Annulla</Button>
+            <Button onClick={() => addLineMut.mutate()} disabled={Object.keys(selectedComponents).length === 0 || addLineMut.isPending}>
+              Aggiungi {Object.keys(selectedComponents).length > 0 ? `(${Object.keys(selectedComponents).length})` : ""}
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
 
