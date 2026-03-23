@@ -203,9 +203,10 @@ export default function SuppliersPage() {
             {suppliers.length} fornitori registrati
           </p>
         </div>
-        <Button onClick={openNew} className="gap-2">
-          <Plus className="h-4 w-4" /> Nuovo Fornitore
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => setCsvOpen(true)} className="gap-2"><Upload className="h-4 w-4" /> Importa CSV</Button>
+          <Button onClick={openNew} className="gap-2"><Plus className="h-4 w-4" /> Nuovo Fornitore</Button>
+        </div>
       </div>
 
       {/* Search */}
