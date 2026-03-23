@@ -463,6 +463,23 @@ export default function SuppliersPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <CsvImportDialog open={csvOpen} onOpenChange={setCsvOpen} title="Importa Fornitori da CSV"
+        expectedColumns={["ragione_sociale", "partita_iva", "paese", "indirizzo", "contatto_nome", "contatto_email", "contatto_telefono"]}
+        onImport={async (rows) => {
+          const payload = rows.map(r => ({
+            company_name: r["ragione_sociale"] || r["company_name"] || r["Ragione Sociale"] || "",
+            vat_number: r["partita_iva"] || r["vat_number"] || r["P.IVA"] || null,
+            country: r["paese"] || r["country"] || r["Paese"] || null,
+            address: r["indirizzo"] || r["address"] || null,
+            contact_name: r["contatto_nome"] || r["contact_name"] || null,
+            contact_email: r["contatto_email"] || r["contact_email"] || null,
+            contact_phone: r["contatto_telefono"] || r["contact_phone"] || null,
+          })).filter(r => r.company_name);
+          const { error } = await supabase.from("suppliers").insert(payload);
+          if (error) throw error;
+          queryClient.invalidateQueries({ queryKey: ["suppliers"] });
+        }} />
     </div>
   );
 }
