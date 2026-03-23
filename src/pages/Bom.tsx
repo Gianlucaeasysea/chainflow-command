@@ -18,7 +18,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import ItemDetailDialog from "@/components/ItemDetailDialog";
 
 export default function BomPage() {
-  const [selectedBom, setSelectedBom] = useState<string | null>(null);
+  const [searchTerm, setSearchTerm] = useState("");
   const [createOpen, setCreateOpen] = useState(false);
   const [addLineOpen, setAddLineOpen] = useState(false);
   const [newBom, setNewBom] = useState({ item_id: "", notes: "" });
