@@ -378,6 +378,27 @@ export default function PurchaseOrdersPage() {
           </form>
         </DialogContent>
       </Dialog>
+
+      <CsvImportDialog open={csvOpen} onOpenChange={setCsvOpen} title="Importa Ordini Fornitori da CSV"
+        expectedColumns={["fornitore", "valuta", "incoterm", "data_consegna", "note"]}
+        onImport={async (rows) => {
+          for (const r of rows) {
+            const supplierName = r["fornitore"] || r["supplier"] || "";
+            const supplier = suppliers.find(s => s.company_name.toLowerCase() === supplierName.toLowerCase());
+            if (!supplier) continue;
+            const poNum = `PO-${new Date().getFullYear()}-${String(Date.now()).slice(-4)}`;
+            const { data, error } = await supabase.from("purchase_orders").insert({
+              po_number: poNum, supplier_id: supplier.id,
+              currency: r["valuta"] || r["currency"] || "EUR",
+              incoterm: r["incoterm"] || "EXW",
+              requested_delivery_date: r["data_consegna"] || r["delivery_date"] || null,
+              notes: r["note"] || r["notes"] || null,
+            }).select().single();
+            if (error) throw error;
+            await supabase.from("po_status_history").insert({ purchase_order_id: data.id, status: "draft", notes: "Importato da CSV" });
+          }
+          qc.invalidateQueries({ queryKey: ["purchase_orders"] });
+        }} />
     </div>
   );
 }
