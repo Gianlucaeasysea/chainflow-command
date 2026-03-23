@@ -21,7 +21,7 @@ export default function BomPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [addLineOpen, setAddLineOpen] = useState(false);
   const [newBom, setNewBom] = useState({ item_id: "", notes: "" });
-  const [newLine, setNewLine] = useState({ component_item_id: "", quantity: "1", waste_pct: "0", notes: "" });
+  const [selectedComponents, setSelectedComponents] = useState<Record<string, { quantity: string; waste_pct: string; notes: string }>>({});
   const [detailItemId, setDetailItemId] = useState<string | null>(null);
   const qc = useQueryClient();
 
