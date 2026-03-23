@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { Plus, Search, Star, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
+import { Plus, Search, Star, MoreHorizontal, Pencil, Trash2, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -39,6 +39,7 @@ import {
 } from "@/components/ui/select";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import CsvImportDialog from "@/components/CsvImportDialog";
 
 type Supplier = {
   id: string;
@@ -97,6 +98,7 @@ export default function SuppliersPage() {
   const [editSupplier, setEditSupplier] = useState<Supplier | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [form, setForm] = useState(emptySupplier);
+  const [csvOpen, setCsvOpen] = useState(false);
   const queryClient = useQueryClient();
 
   const { data: suppliers = [], isLoading } = useQuery({
@@ -201,9 +203,10 @@ export default function SuppliersPage() {
             {suppliers.length} fornitori registrati
           </p>
         </div>
-        <Button onClick={openNew} className="gap-2">
-          <Plus className="h-4 w-4" /> Nuovo Fornitore
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => setCsvOpen(true)} className="gap-2"><Upload className="h-4 w-4" /> Importa CSV</Button>
+          <Button onClick={openNew} className="gap-2"><Plus className="h-4 w-4" /> Nuovo Fornitore</Button>
+        </div>
       </div>
 
       {/* Search */}
@@ -460,6 +463,23 @@ export default function SuppliersPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <CsvImportDialog open={csvOpen} onOpenChange={setCsvOpen} title="Importa Fornitori da CSV"
+        expectedColumns={["ragione_sociale", "partita_iva", "paese", "indirizzo", "contatto_nome", "contatto_email", "contatto_telefono"]}
+        onImport={async (rows) => {
+          const payload = rows.map(r => ({
+            company_name: r["ragione_sociale"] || r["company_name"] || r["Ragione Sociale"] || "",
+            vat_number: r["partita_iva"] || r["vat_number"] || r["P.IVA"] || null,
+            country: r["paese"] || r["country"] || r["Paese"] || null,
+            address: r["indirizzo"] || r["address"] || null,
+            contact_name: r["contatto_nome"] || r["contact_name"] || null,
+            contact_email: r["contatto_email"] || r["contact_email"] || null,
+            contact_phone: r["contatto_telefono"] || r["contact_phone"] || null,
+          })).filter(r => r.company_name);
+          const { error } = await supabase.from("suppliers").insert(payload);
+          if (error) throw error;
+          queryClient.invalidateQueries({ queryKey: ["suppliers"] });
+        }} />
     </div>
   );
 }

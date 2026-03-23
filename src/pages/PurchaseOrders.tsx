@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { Plus, Search, MoreHorizontal, Eye, Trash2 } from "lucide-react";
+import { Plus, Search, MoreHorizontal, Eye, Trash2, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import CsvImportDialog from "@/components/CsvImportDialog";
 
 const PO_STATUSES = [
   { value: "draft", label: "Bozza", color: "text-muted-foreground bg-muted/50" },
@@ -41,6 +42,7 @@ export default function PurchaseOrdersPage() {
   const [addLineOpen, setAddLineOpen] = useState(false);
   const [form, setForm] = useState({ supplier_id: "", currency: "EUR", incoterm: "EXW", shipping_port: "", requested_delivery_date: "", notes: "" });
   const [lineForm, setLineForm] = useState({ item_id: "", quantity: "1", unit_price: "0", discount_pct: "0", notes: "" });
+  const [csvOpen, setCsvOpen] = useState(false);
   const qc = useQueryClient();
 
   const { data: suppliers = [] } = useQuery({
@@ -150,7 +152,10 @@ export default function PurchaseOrdersPage() {
           <h1 className="text-xl font-semibold text-foreground">Ordini Fornitori</h1>
           <p className="text-sm text-muted-foreground">{orders.length} ordini</p>
         </div>
-        <Button onClick={() => setCreateOpen(true)} className="gap-2"><Plus className="h-4 w-4" /> Nuovo PO</Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => setCsvOpen(true)} className="gap-2"><Upload className="h-4 w-4" /> Importa CSV</Button>
+          <Button onClick={() => setCreateOpen(true)} className="gap-2"><Plus className="h-4 w-4" /> Nuovo PO</Button>
+        </div>
       </div>
 
       <div className="flex gap-3">
@@ -373,6 +378,27 @@ export default function PurchaseOrdersPage() {
           </form>
         </DialogContent>
       </Dialog>
+
+      <CsvImportDialog open={csvOpen} onOpenChange={setCsvOpen} title="Importa Ordini Fornitori da CSV"
+        expectedColumns={["fornitore", "valuta", "incoterm", "data_consegna", "note"]}
+        onImport={async (rows) => {
+          for (const r of rows) {
+            const supplierName = r["fornitore"] || r["supplier"] || "";
+            const supplier = suppliers.find(s => s.company_name.toLowerCase() === supplierName.toLowerCase());
+            if (!supplier) continue;
+            const poNum = `PO-${new Date().getFullYear()}-${String(Date.now()).slice(-4)}`;
+            const { data, error } = await supabase.from("purchase_orders").insert({
+              po_number: poNum, supplier_id: supplier.id,
+              currency: r["valuta"] || r["currency"] || "EUR",
+              incoterm: r["incoterm"] || "EXW",
+              requested_delivery_date: r["data_consegna"] || r["delivery_date"] || null,
+              notes: r["note"] || r["notes"] || null,
+            }).select().single();
+            if (error) throw error;
+            await supabase.from("po_status_history").insert({ purchase_order_id: data.id, status: "draft", notes: "Importato da CSV" });
+          }
+          qc.invalidateQueries({ queryKey: ["purchase_orders"] });
+        }} />
     </div>
   );
 }

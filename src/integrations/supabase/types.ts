@@ -206,35 +206,50 @@ export type Database = {
       }
       items: {
         Row: {
+          assembly_cost: number | null
           category: string | null
           created_at: string
           description: string
+          drive_folder_url: string | null
           id: string
           image_url: string | null
           item_code: string
+          item_type: string | null
           notes: string | null
+          technical_file_urls: string[] | null
+          unit_cost: number | null
           unit_of_measure: string
           updated_at: string
         }
         Insert: {
+          assembly_cost?: number | null
           category?: string | null
           created_at?: string
           description: string
+          drive_folder_url?: string | null
           id?: string
           image_url?: string | null
           item_code: string
+          item_type?: string | null
           notes?: string | null
+          technical_file_urls?: string[] | null
+          unit_cost?: number | null
           unit_of_measure?: string
           updated_at?: string
         }
         Update: {
+          assembly_cost?: number | null
           category?: string | null
           created_at?: string
           description?: string
+          drive_folder_url?: string | null
           id?: string
           image_url?: string | null
           item_code?: string
+          item_type?: string | null
           notes?: string | null
+          technical_file_urls?: string[] | null
+          unit_cost?: number | null
           unit_of_measure?: string
           updated_at?: string
         }
