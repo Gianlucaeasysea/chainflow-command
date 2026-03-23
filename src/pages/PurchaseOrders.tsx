@@ -42,6 +42,7 @@ export default function PurchaseOrdersPage() {
   const [addLineOpen, setAddLineOpen] = useState(false);
   const [form, setForm] = useState({ supplier_id: "", currency: "EUR", incoterm: "EXW", shipping_port: "", requested_delivery_date: "", notes: "" });
   const [lineForm, setLineForm] = useState({ item_id: "", quantity: "1", unit_price: "0", discount_pct: "0", notes: "" });
+  const [csvOpen, setCsvOpen] = useState(false);
   const qc = useQueryClient();
 
   const { data: suppliers = [] } = useQuery({
