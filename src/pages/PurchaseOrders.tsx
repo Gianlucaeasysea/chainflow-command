@@ -246,6 +246,9 @@ export default function PurchaseOrdersPage() {
 
   const deleteMut = useMutation({
     mutationFn: async (orderId: string) => {
+      // Scollega i lotti inventario (FK nullable)
+      const { error: e0 } = await supabase.from("inventory_lots").update({ purchase_order_id: null }).eq("purchase_order_id", orderId);
+      if (e0) throw e0;
       const { error: e1 } = await supabase.from("po_status_history").delete().eq("purchase_order_id", orderId);
       if (e1) throw e1;
       const { error: e2 } = await supabase.from("po_lines").delete().eq("purchase_order_id", orderId);
