@@ -1,7 +1,7 @@
 import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { Plus, Search, Eye, Upload, Clock, TrendingUp, Package, Check, Trash2, Truck } from "lucide-react";
+import { Plus, Search, Eye, Upload, Clock, TrendingUp, Package, Check, Trash2, Truck, MapPin, Layers, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -40,15 +40,17 @@ type LineEntry = {
   unit_price: string;
   discount_pct: string;
   notes: string;
+  catalog_price: string;
+  price_source: "supplier" | "item" | "manual";
 };
 
-type DeliveryEntry = {
-  tempId: string;
-  item_id: string;   // empty = intero ordine
+type DeliveryGroup = {
+  groupId: string;
   scheduled_date: string;
-  quantity: string;
+  destination: string;
   status: string;
   notes: string;
+  lines: { item_id: string; quantity: string }[];
 };
 
 export default function PurchaseOrdersPage() {
@@ -60,14 +62,15 @@ export default function PurchaseOrdersPage() {
   const [addLineOpen, setAddLineOpen] = useState(false);
   const [form, setForm] = useState({ supplier_id: "", currency: "EUR", incoterm: "EXW", shipping_port: "", requested_delivery_date: "", notes: "", is_pre_series: false });
   const [createLines, setCreateLines] = useState<LineEntry[]>([]);
-  const [createDeliveries, setCreateDeliveries] = useState<DeliveryEntry[]>([]);
+  const [createDeliveries, setCreateDeliveries] = useState<DeliveryGroup[]>([]);
+  const [numDeliveries, setNumDeliveries] = useState("1");
   const [lineSearch, setLineSearch] = useState("");
   const [detailLineSearch, setDetailLineSearch] = useState("");
   const [detailLineForm, setDetailLineForm] = useState<LineEntry>({ item_id: "", quantity: "1", unit_price: "0", discount_pct: "0", notes: "" });
   const [csvOpen, setCsvOpen] = useState(false);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [deliveryOpen, setDeliveryOpen] = useState(false);
-  const [deliveryForm, setDeliveryForm] = useState({ scheduled_date: "", quantity: "0", status: "scheduled", notes: "", po_line_id: "" });
+  const [deliveryForm, setDeliveryForm] = useState({ scheduled_date: "", quantity: "0", status: "scheduled", notes: "", po_line_id: "", destination: "" });
   const qc = useQueryClient();
 
   const { data: suppliers = [] } = useQuery({
@@ -212,19 +215,31 @@ export default function PurchaseOrdersPage() {
         createdLines = linesData || [];
       }
 
-      // Insert programmed deliveries
-      const validDeliveries = createDeliveries.filter(d => d.scheduled_date && parseFloat(d.quantity) > 0);
-      if (validDeliveries.length > 0) {
-        const deliveryRows = validDeliveries.map(d => ({
-          purchase_order_id: data.id,
-          po_line_id: d.item_id ? (createdLines.find((l: any) => l.item_id === d.item_id)?.id || null) : null,
-          scheduled_date: d.scheduled_date,
-          quantity: parseFloat(d.quantity),
-          status: d.status,
-          notes: d.notes || null,
-        }));
-        const { error: deliveryErr } = await supabase.from("po_deliveries").insert(deliveryRows);
-        if (deliveryErr) throw deliveryErr;
+      // Insert programmed deliveries (grouped)
+      const validGroups = createDeliveries.filter(g => g.scheduled_date);
+      if (validGroups.length > 0) {
+        const allDeliveryRows: any[] = [];
+        for (const g of validGroups) {
+          const groupId = crypto.randomUUID();
+          for (const l of g.lines) {
+            const qty = parseFloat(l.quantity);
+            if (qty <= 0) continue;
+            allDeliveryRows.push({
+              purchase_order_id: data.id,
+              po_line_id: createdLines.find((cl: any) => cl.item_id === l.item_id)?.id || null,
+              scheduled_date: g.scheduled_date,
+              quantity: qty,
+              status: g.status,
+              notes: g.notes || null,
+              destination: g.destination || null,
+              delivery_group_id: groupId,
+            });
+          }
+        }
+        if (allDeliveryRows.length > 0) {
+          const { error: deliveryErr } = await supabase.from("po_deliveries").insert(allDeliveryRows);
+          if (deliveryErr) throw deliveryErr;
+        }
       }
 
       await supabase.from("po_status_history").insert({
@@ -290,6 +305,7 @@ export default function PurchaseOrdersPage() {
         quantity: parseFloat(deliveryForm.quantity),
         status: deliveryForm.status,
         notes: deliveryForm.notes || null,
+        destination: deliveryForm.destination || null,
       });
       if (error) throw error;
     },
@@ -297,7 +313,7 @@ export default function PurchaseOrdersPage() {
       qc.invalidateQueries({ queryKey: ["po_deliveries", detailId] });
       qc.invalidateQueries({ queryKey: ["po_deliveries"] });
       setDeliveryOpen(false);
-      setDeliveryForm({ scheduled_date: "", quantity: "0", status: "scheduled", notes: "", po_line_id: "" });
+      setDeliveryForm({ scheduled_date: "", quantity: "0", status: "scheduled", notes: "", po_line_id: "", destination: "" });
       toast.success("Consegna programmata");
     },
     onError: (e) => toast.error((e as Error).message),
@@ -345,6 +361,7 @@ export default function PurchaseOrdersPage() {
     setCreateStep(0);
     setCreateLines([]);
     setCreateDeliveries([]);
+    setNumDeliveries("1");
     setLineSearch("");
     setForm({ supplier_id: "", currency: "EUR", incoterm: "EXW", shipping_port: "", requested_delivery_date: "", notes: "", is_pre_series: false });
   };
@@ -355,8 +372,11 @@ export default function PurchaseOrdersPage() {
       if (existing) return prev.filter(l => l.item_id !== itemId);
       const item = items.find(i => i.id === itemId);
       const si = form.supplier_id ? getSupplierPrice(itemId, form.supplier_id) : null;
-      const price = si?.unit_price ? String(si.unit_price) : item?.unit_cost ? String(item.unit_cost) : "0";
-      return [...prev, { item_id: itemId, quantity: "1", unit_price: price, discount_pct: "0", notes: "" }];
+      let price = "0";
+      let priceSource: LineEntry["price_source"] = "manual";
+      if (si?.unit_price) { price = String(si.unit_price); priceSource = "supplier"; }
+      else if (item?.unit_cost) { price = String(item.unit_cost); priceSource = "item"; }
+      return [...prev, { item_id: itemId, quantity: "1", unit_price: price, discount_pct: "0", notes: "", catalog_price: price, price_source: priceSource }];
     });
   };
 
@@ -655,35 +675,66 @@ export default function PurchaseOrdersPage() {
                   <h4 className="text-xs font-mono uppercase tracking-wider text-muted-foreground">
                     {createLines.length} articol{createLines.length > 1 ? "i" : "o"} selezionat{createLines.length > 1 ? "i" : "o"}
                   </h4>
-                  <div className="space-y-2">
-                    {createLines.map(line => {
-                      const item = getItem(line.item_id);
-                      return (
-                        <div key={line.item_id} className="p-3 bg-muted/20 rounded-lg space-y-2">
-                          <div className="flex items-center justify-between">
-                            <span className="font-mono text-xs text-primary">{item?.item_code}</span>
-                            <span className="text-xs text-foreground">{item?.description}</span>
-                          </div>
-                          <div className="grid grid-cols-4 gap-2">
-                            <div>
-                              <Label className="text-[10px]">Qtà</Label>
-                              <Input type="number" step="0.01" className="font-mono h-8 text-xs" value={line.quantity} onChange={e => updateCreateLine(line.item_id, "quantity", e.target.value)} />
-                            </div>
-                            <div>
-                              <Label className="text-[10px]">Prezzo €</Label>
-                              <Input type="number" step="0.01" className="font-mono h-8 text-xs" value={line.unit_price} onChange={e => updateCreateLine(line.item_id, "unit_price", e.target.value)} />
-                            </div>
-                            <div>
-                              <Label className="text-[10px]">Sconto %</Label>
-                              <Input type="number" step="0.01" className="font-mono h-8 text-xs" value={line.discount_pct} onChange={e => updateCreateLine(line.item_id, "discount_pct", e.target.value)} />
-                            </div>
-                            <div className="flex items-end">
-                              <span className="text-xs font-mono text-foreground font-semibold pb-1.5">€{calcLineTotal(line).toFixed(2)}</span>
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })}
+                  <div className="border border-border rounded-lg overflow-hidden">
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="border-b border-border bg-muted/30">
+                          <th className="text-left p-2 font-mono text-muted-foreground uppercase tracking-wider">Articolo</th>
+                          <th className="text-left p-2 font-mono text-muted-foreground uppercase tracking-wider w-24">Qtà</th>
+                          <th className="text-left p-2 font-mono text-muted-foreground uppercase tracking-wider w-40">
+                            Prezzo ({form.currency})
+                          </th>
+                          <th className="text-left p-2 font-mono text-muted-foreground uppercase tracking-wider w-24">Sconto %</th>
+                          <th className="text-right p-2 font-mono text-muted-foreground uppercase tracking-wider w-28">Totale</th>
+                          <th className="p-2 w-6"></th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-border">
+                        {createLines.map(line => {
+                          const item = getItem(line.item_id);
+                          const isOverridden = line.unit_price !== line.catalog_price && line.catalog_price !== "0";
+                          const sourceLabel = line.price_source === "supplier" ? "da catalogo fornitore" : line.price_source === "item" ? "da scheda articolo" : "manuale";
+                          const sourceBadgeClass = line.price_source === "supplier" ? "text-emerald-400" : line.price_source === "item" ? "text-blue-400" : "text-muted-foreground";
+                          return (
+                            <tr key={line.item_id} className="hover:bg-muted/10">
+                              <td className="p-2">
+                                <div className="flex items-center gap-2">
+                                  <span className="font-mono text-primary font-medium">{item?.item_code}</span>
+                                  <span className="text-muted-foreground truncate max-w-[140px]">{item?.description}</span>
+                                  {item?.unit_of_measure && <span className="text-muted-foreground/60 shrink-0">{item.unit_of_measure}</span>}
+                                </div>
+                              </td>
+                              <td className="p-2">
+                                <Input type="number" step="0.01" min="0" className="font-mono h-7 text-xs w-full" value={line.quantity} onChange={e => updateCreateLine(line.item_id, "quantity", e.target.value)} />
+                              </td>
+                              <td className="p-2">
+                                <div className="space-y-0.5">
+                                  <Input type="number" step="0.01" min="0" className={cn("font-mono h-7 text-xs w-full", isOverridden && "border-amber-500/50 focus:border-amber-500")} value={line.unit_price} onChange={e => updateCreateLine(line.item_id, "unit_price", e.target.value)} />
+                                  <div className="flex items-center gap-1">
+                                    {isOverridden ? (
+                                      <span className="text-[10px] text-amber-400 flex items-center gap-0.5">
+                                        <AlertCircle className="h-2.5 w-2.5" /> override (orig. €{parseFloat(line.catalog_price).toFixed(2)})
+                                      </span>
+                                    ) : (
+                                      <span className={cn("text-[10px]", sourceBadgeClass)}>{sourceLabel}</span>
+                                    )}
+                                  </div>
+                                </div>
+                              </td>
+                              <td className="p-2">
+                                <Input type="number" step="0.01" min="0" max="100" className="font-mono h-7 text-xs w-full" value={line.discount_pct} onChange={e => updateCreateLine(line.item_id, "discount_pct", e.target.value)} />
+                              </td>
+                              <td className="p-2 text-right font-mono font-semibold text-foreground">€{calcLineTotal(line).toFixed(2)}</td>
+                              <td className="p-2">
+                                <button onClick={() => setCreateLines(prev => prev.filter(l => l.item_id !== line.item_id))} className="text-destructive/40 hover:text-destructive transition-colors">
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
                   </div>
                 </div>
               )}
@@ -701,110 +752,216 @@ export default function PurchaseOrdersPage() {
           {/* STEP 2: Delivery scheduling */}
           {createStep === 2 && (
             <div className="space-y-4">
-              <p className="text-xs text-muted-foreground">
-                Aggiungi le consegne scadenziabili per questo ordine. Puoi saltare questo step e aggiungerle in seguito.
-              </p>
-
-              {/* Per-item coverage summary */}
-              <div className="grid grid-cols-2 gap-2">
-                {createLines.map(line => {
-                  const item = getItem(line.item_id);
-                  const ordered = parseFloat(line.quantity);
-                  const scheduled = createDeliveries
-                    .filter(d => d.item_id === line.item_id || d.item_id === "")
-                    .reduce((s, d) => s + (parseFloat(d.quantity) || 0), 0);
-                  const pct = ordered > 0 ? Math.min(100, Math.round((scheduled / ordered) * 100)) : 0;
-                  return (
-                    <div key={line.item_id} className="bg-muted/20 rounded-lg p-2 text-xs">
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="font-mono text-primary">{item?.item_code}</span>
-                        <span className="text-muted-foreground font-mono">{scheduled}/{ordered} {item?.unit_of_measure}</span>
-                      </div>
-                      <div className="h-1.5 rounded-full bg-muted/50 overflow-hidden">
-                        <div className={cn("h-full rounded-full transition-all", pct >= 100 ? "bg-emerald-500" : pct > 0 ? "bg-primary" : "bg-muted")} style={{ width: `${pct}%` }} />
-                      </div>
-                    </div>
-                  );
-                })}
+              {/* Generate deliveries panel */}
+              <div className="flex items-center gap-3 p-3 bg-muted/20 rounded-lg border border-border">
+                <Layers className="h-4 w-4 text-primary shrink-0" />
+                <div className="flex items-center gap-2 flex-1">
+                  <Label className="text-sm shrink-0">Numero di consegne:</Label>
+                  <Input
+                    type="number" min="1" max="20"
+                    className="font-mono h-8 w-20 text-sm"
+                    value={numDeliveries}
+                    onChange={e => setNumDeliveries(e.target.value)}
+                  />
+                </div>
+                <Button
+                  size="sm"
+                  className="gap-1 shrink-0"
+                  onClick={() => {
+                    const n = Math.max(1, Math.min(20, parseInt(numDeliveries) || 1));
+                    setNumDeliveries(String(n));
+                    setCreateDeliveries(Array.from({ length: n }, () => ({
+                      groupId: crypto.randomUUID(),
+                      scheduled_date: form.requested_delivery_date || "",
+                      destination: "",
+                      status: "scheduled",
+                      notes: "",
+                      lines: createLines.map(l => ({
+                        item_id: l.item_id,
+                        quantity: String(Math.floor(parseFloat(l.quantity) / n)),
+                      })),
+                    })));
+                  }}
+                >
+                  <Layers className="h-3.5 w-3.5" /> Genera e distribuisci
+                </Button>
               </div>
 
-              {/* Delivery rows */}
-              {createDeliveries.length > 0 && (
-                <div className="border border-border rounded-lg overflow-hidden">
-                  <table className="w-full text-xs">
-                    <thead><tr className="border-b border-border bg-muted/30">
-                      {["Articolo", "Data", "Qtà", "Stato", "Note", ""].map(h => (
-                        <th key={h} className="text-left p-2 font-mono text-muted-foreground uppercase tracking-wider">{h}</th>
-                      ))}
-                    </tr></thead>
-                    <tbody className="divide-y divide-border">
-                      {createDeliveries.map(d => (
-                        <tr key={d.tempId}>
-                          <td className="p-2">
-                            <Select value={d.item_id} onValueChange={v => setCreateDeliveries(prev => prev.map(x => x.tempId === d.tempId ? { ...x, item_id: v } : x))}>
-                              <SelectTrigger className="h-7 text-xs w-36"><SelectValue placeholder="Intero ordine" /></SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="">Intero ordine</SelectItem>
-                                {createLines.map(l => {
-                                  const it = getItem(l.item_id);
-                                  return <SelectItem key={l.item_id} value={l.item_id}>{it?.item_code}</SelectItem>;
-                                })}
-                              </SelectContent>
-                            </Select>
-                          </td>
-                          <td className="p-2">
-                            <Input type="date" className="font-mono h-7 text-xs w-36" value={d.scheduled_date}
-                              onChange={e => setCreateDeliveries(prev => prev.map(x => x.tempId === d.tempId ? { ...x, scheduled_date: e.target.value } : x))} />
-                          </td>
-                          <td className="p-2">
-                            <Input type="number" step="0.01" min="0" className="font-mono h-7 text-xs w-24" value={d.quantity}
-                              onChange={e => setCreateDeliveries(prev => prev.map(x => x.tempId === d.tempId ? { ...x, quantity: e.target.value } : x))} />
-                          </td>
-                          <td className="p-2">
-                            <Select value={d.status} onValueChange={v => setCreateDeliveries(prev => prev.map(x => x.tempId === d.tempId ? { ...x, status: v } : x))}>
-                              <SelectTrigger className="h-7 text-xs w-32"><SelectValue /></SelectTrigger>
-                              <SelectContent>
-                                {[["scheduled","Programmata"],["in_transit","In Transito"],["received","Ricevuta"],["delayed","In Ritardo"]].map(([val, label]) => (
-                                  <SelectItem key={val} value={val}>{label}</SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          </td>
-                          <td className="p-2">
-                            <Input className="h-7 text-xs" placeholder="nota..." value={d.notes}
-                              onChange={e => setCreateDeliveries(prev => prev.map(x => x.tempId === d.tempId ? { ...x, notes: e.target.value } : x))} />
-                          </td>
-                          <td className="p-2">
-                            <button onClick={() => setCreateDeliveries(prev => prev.filter(x => x.tempId !== d.tempId))}
-                              className="text-destructive/50 hover:text-destructive transition-colors">
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
+              {/* Delivery cards */}
+              <div className="space-y-3">
+                {createDeliveries.map((group, gi) => (
+                  <div key={group.groupId} className="border border-border rounded-lg overflow-hidden">
+                    {/* Card header */}
+                    <div className="flex items-center gap-2 px-3 py-2 bg-muted/30 border-b border-border">
+                      <Truck className="h-4 w-4 text-primary" />
+                      <span className="font-mono text-sm font-semibold text-foreground">Consegna {gi + 1}</span>
+                      <button
+                        onClick={() => setCreateDeliveries(prev => prev.filter(g => g.groupId !== group.groupId))}
+                        className="ml-auto text-destructive/40 hover:text-destructive transition-colors"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+
+                    <div className="p-3 space-y-3">
+                      {/* Date + Destination + Status */}
+                      <div className="grid grid-cols-3 gap-2">
+                        <div>
+                          <Label className="text-[10px] font-mono uppercase text-muted-foreground">Data prevista arrivo *</Label>
+                          <Input
+                            type="date"
+                            className="font-mono h-8 text-xs mt-1"
+                            value={group.scheduled_date}
+                            onChange={e => setCreateDeliveries(prev => prev.map(g => g.groupId === group.groupId ? { ...g, scheduled_date: e.target.value } : g))}
+                          />
+                        </div>
+                        <div>
+                          <Label className="text-[10px] font-mono uppercase text-muted-foreground flex items-center gap-1">
+                            <MapPin className="h-2.5 w-2.5" /> Destinazione
+                          </Label>
+                          <Input
+                            className="h-8 text-xs mt-1"
+                            placeholder="es. Magazzino Milano..."
+                            value={group.destination}
+                            onChange={e => setCreateDeliveries(prev => prev.map(g => g.groupId === group.groupId ? { ...g, destination: e.target.value } : g))}
+                          />
+                        </div>
+                        <div>
+                          <Label className="text-[10px] font-mono uppercase text-muted-foreground">Stato</Label>
+                          <Select
+                            value={group.status}
+                            onValueChange={v => setCreateDeliveries(prev => prev.map(g => g.groupId === group.groupId ? { ...g, status: v } : g))}
+                          >
+                            <SelectTrigger className="h-8 text-xs mt-1"><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              {[["scheduled","Programmata"],["in_transit","In Transito"],["received","Ricevuta"],["delayed","In Ritardo"]].map(([val, label]) => (
+                                <SelectItem key={val} value={val}>{label}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+
+                      {/* Per-item quantities */}
+                      <div className="border border-border/50 rounded-lg overflow-hidden">
+                        <table className="w-full text-xs">
+                          <thead>
+                            <tr className="border-b border-border/50 bg-muted/20">
+                              <th className="text-left p-2 font-mono text-muted-foreground">Articolo</th>
+                              <th className="text-right p-2 font-mono text-muted-foreground w-32">Qtà totale ord.</th>
+                              <th className="text-right p-2 font-mono text-muted-foreground w-36">Qtà in questa consegna</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-border/50">
+                            {group.lines.map(line => {
+                              const item = getItem(line.item_id);
+                              const totalOrdered = parseFloat(createLines.find(l => l.item_id === line.item_id)?.quantity || "0");
+                              const allocatedElsewhere = createDeliveries
+                                .filter(g => g.groupId !== group.groupId)
+                                .reduce((sum, g) => {
+                                  const l = g.lines.find(l => l.item_id === line.item_id);
+                                  return sum + (parseFloat(l?.quantity || "0") || 0);
+                                }, 0);
+                              const thisQty = parseFloat(line.quantity) || 0;
+                              const totalAllocated = allocatedElsewhere + thisQty;
+                              const overAllocated = totalAllocated > totalOrdered;
+                              return (
+                                <tr key={line.item_id}>
+                                  <td className="p-2">
+                                    <div className="flex items-center gap-2">
+                                      <span className="font-mono text-primary font-medium">{item?.item_code}</span>
+                                      <span className="text-muted-foreground truncate">{item?.description}</span>
+                                    </div>
+                                  </td>
+                                  <td className="p-2 text-right font-mono text-muted-foreground">
+                                    {totalOrdered} {item?.unit_of_measure}
+                                  </td>
+                                  <td className="p-2">
+                                    <div className="flex items-center gap-1 justify-end">
+                                      <Input
+                                        type="number" step="0.01" min="0"
+                                        className={cn("font-mono h-7 text-xs w-28 text-right", overAllocated && "border-destructive")}
+                                        value={line.quantity}
+                                        onChange={e => setCreateDeliveries(prev =>
+                                          prev.map(g => g.groupId === group.groupId
+                                            ? { ...g, lines: g.lines.map(l => l.item_id === line.item_id ? { ...l, quantity: e.target.value } : l) }
+                                            : g
+                                          )
+                                        )}
+                                      />
+                                      {item?.unit_of_measure && <span className="text-muted-foreground/60 shrink-0 w-6">{item.unit_of_measure}</span>}
+                                    </div>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+
+                      {/* Notes */}
+                      <div>
+                        <Label className="text-[10px] font-mono uppercase text-muted-foreground">Note</Label>
+                        <Input
+                          className="h-8 text-xs mt-1"
+                          placeholder="Note per questa consegna..."
+                          value={group.notes}
+                          onChange={e => setCreateDeliveries(prev => prev.map(g => g.groupId === group.groupId ? { ...g, notes: e.target.value } : g))}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
 
               <Button
-                variant="outline"
-                size="sm"
-                className="gap-1 w-full"
-                onClick={() => {
-                  const firstItem = createLines[0]?.item_id || "";
-                  setCreateDeliveries(prev => [...prev, {
-                    tempId: crypto.randomUUID(),
-                    item_id: firstItem,
-                    scheduled_date: form.requested_delivery_date || "",
-                    quantity: createLines.find(l => l.item_id === firstItem)?.quantity || "0",
-                    status: "scheduled",
-                    notes: "",
-                  }]);
-                }}
+                variant="outline" size="sm" className="gap-1 w-full"
+                onClick={() => setCreateDeliveries(prev => [...prev, {
+                  groupId: crypto.randomUUID(),
+                  scheduled_date: form.requested_delivery_date || "",
+                  destination: "",
+                  status: "scheduled",
+                  notes: "",
+                  lines: createLines.map(l => ({ item_id: l.item_id, quantity: "0" })),
+                }])}
               >
-                <Plus className="h-3.5 w-3.5" /> Aggiungi consegna
+                <Plus className="h-3.5 w-3.5" /> Aggiungi consegna manualmente
               </Button>
+
+              {/* Coverage summary */}
+              {createDeliveries.length > 0 && createLines.length > 0 && (
+                <div className="space-y-2 p-3 bg-muted/10 rounded-lg border border-border/50">
+                  <h4 className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground">Copertura per articolo</h4>
+                  <div className="grid grid-cols-2 gap-2">
+                    {createLines.map(line => {
+                      const item = getItem(line.item_id);
+                      const ordered = parseFloat(line.quantity);
+                      const scheduled = createDeliveries.reduce((s, g) => {
+                        const l = g.lines.find(gl => gl.item_id === line.item_id);
+                        return s + (parseFloat(l?.quantity || "0") || 0);
+                      }, 0);
+                      const pct = ordered > 0 ? Math.min(100, Math.round((scheduled / ordered) * 100)) : 0;
+                      const over = scheduled > ordered;
+                      return (
+                        <div key={line.item_id} className="bg-muted/20 rounded-lg p-2 text-xs">
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="font-mono text-primary">{item?.item_code}</span>
+                            <span className={cn("font-mono", over ? "text-destructive" : "text-muted-foreground")}>
+                              {scheduled}/{ordered} {item?.unit_of_measure}
+                            </span>
+                          </div>
+                          <div className="h-1.5 rounded-full bg-muted/50 overflow-hidden">
+                            <div
+                              className={cn("h-full rounded-full transition-all", over ? "bg-destructive" : pct >= 100 ? "bg-emerald-500" : pct > 0 ? "bg-primary" : "bg-muted")}
+                              style={{ width: `${Math.min(pct, 100)}%` }}
+                            />
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
 
               <div className="flex justify-between">
                 <Button variant="outline" onClick={() => setCreateStep(1)}>← Prodotti</Button>
@@ -868,19 +1025,33 @@ export default function PurchaseOrdersPage() {
               </table>
 
               {/* Deliveries summary if any */}
-              {createDeliveries.filter(d => d.scheduled_date).length > 0 && (
-                <div className="bg-muted/20 rounded-lg p-3 space-y-1">
-                  <h4 className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground mb-2">Consegne programmate</h4>
-                  {createDeliveries.filter(d => d.scheduled_date).map(d => {
-                    const it = d.item_id ? getItem(d.item_id) : null;
-                    return (
-                      <div key={d.tempId} className="flex items-center gap-3 text-xs">
-                        <span className="font-mono text-primary w-24">{d.scheduled_date}</span>
-                        <span className="text-muted-foreground">{it ? it.item_code : "Intero ordine"}</span>
-                        <span className="font-mono ml-auto">{d.quantity} pz</span>
+              {createDeliveries.filter(g => g.scheduled_date).length > 0 && (
+                <div className="bg-muted/20 rounded-lg p-3 space-y-2">
+                  <h4 className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground">
+                    {createDeliveries.filter(g => g.scheduled_date).length} consegne programmate
+                  </h4>
+                  {createDeliveries.filter(g => g.scheduled_date).map((g, gi) => (
+                    <div key={g.groupId} className="border border-border/50 rounded p-2 space-y-1">
+                      <div className="flex items-center gap-3 text-xs">
+                        <span className="font-mono font-medium text-foreground">Consegna {gi + 1}</span>
+                        <span className="font-mono text-primary">{g.scheduled_date}</span>
+                        {g.destination && (
+                          <span className="flex items-center gap-1 text-muted-foreground">
+                            <MapPin className="h-3 w-3" />{g.destination}
+                          </span>
+                        )}
                       </div>
-                    );
-                  })}
+                      {g.lines.filter(l => parseFloat(l.quantity) > 0).map(l => {
+                        const it = getItem(l.item_id);
+                        return (
+                          <div key={l.item_id} className="flex items-center gap-2 text-xs pl-3 text-muted-foreground">
+                            <span className="font-mono text-primary/80">{it?.item_code}</span>
+                            <span className="font-mono ml-auto">{l.quantity} {it?.unit_of_measure}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ))}
                 </div>
               )}
 
@@ -984,7 +1155,7 @@ export default function PurchaseOrdersPage() {
                 ) : (
                   <table className="w-full text-sm">
                     <thead><tr className="border-b border-border">
-                      {["Data", "Qtà", "Stato", "Note", ""].map(h => (
+                      {["Data", "Articolo", "Qtà", "Destinazione", "Stato", "Note", ""].map(h => (
                         <th key={h} className="text-left p-2 text-muted-foreground text-xs font-mono">{h}</th>
                       ))}
                     </tr></thead>
@@ -998,10 +1169,16 @@ export default function PurchaseOrdersPage() {
                           scheduled: "Programmata", in_transit: "In Transito",
                           received: "Ricevuta", delayed: "In Ritardo",
                         };
+                        const lineItem = d.po_line_id ? poLines.find((l: any) => l.id === d.po_line_id) : null;
+                        const lineItemData = lineItem ? getItem(lineItem.item_id) : null;
                         return (
                           <tr key={d.id}>
                             <td className="p-2 font-mono text-xs">{d.scheduled_date}</td>
+                            <td className="p-2 font-mono text-xs text-primary">{lineItemData?.item_code || <span className="text-muted-foreground">—</span>}</td>
                             <td className="p-2 font-mono text-xs">{Number(d.quantity)}</td>
+                            <td className="p-2 text-xs text-muted-foreground">
+                              {d.destination ? <span className="flex items-center gap-1"><MapPin className="h-3 w-3 shrink-0" />{d.destination}</span> : "—"}
+                            </td>
                             <td className="p-2"><Badge className={cn("text-xs", statusColors[d.status] || "status-info")}>{statusLabels[d.status] || d.status}</Badge></td>
                             <td className="p-2 text-xs text-muted-foreground">{d.notes || "—"}</td>
                             <td className="p-2">
@@ -1146,6 +1323,10 @@ export default function PurchaseOrdersPage() {
                   ))}
                 </SelectContent>
               </Select>
+            </div>
+            <div>
+              <Label className="text-xs flex items-center gap-1"><MapPin className="h-3 w-3" /> Destinazione</Label>
+              <Input className="h-8 text-xs" placeholder="es. Magazzino Milano..." value={deliveryForm.destination} onChange={e => setDeliveryForm({ ...deliveryForm, destination: e.target.value })} />
             </div>
             <div>
               <Label className="text-xs">Note</Label>
