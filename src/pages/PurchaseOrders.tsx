@@ -186,7 +186,7 @@ export default function PurchaseOrdersPage() {
 
   const createMut = useMutation({
     mutationFn: async () => {
-      const poNum = `PO-${new Date().getFullYear()}-${String(orders.length + 1).padStart(4, "0")}`;
+      const poNum = `PO-${new Date().getFullYear()}-${Date.now().toString(36).toUpperCase()}`;
       const initialStatus = form.is_pre_series ? "pre_series" : "draft";
       const { data, error } = await supabase.from("purchase_orders").insert({
         po_number: poNum, supplier_id: form.supplier_id, currency: form.currency,
