@@ -518,7 +518,7 @@ export default function TimelinePage() {
                       const it = items.find(i => i.id === line.item_id);
                       return (
                         <SelectItem key={line.id} value={line.id}>
-                          {it?.item_code} — {line.quantity} {it?.unit_of_measure ?? ""}
+                          {it?.item_code} — {line.quantity}
                         </SelectItem>
                       );
                     })}
