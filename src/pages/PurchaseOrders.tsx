@@ -1,7 +1,7 @@
 import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { Plus, Search, Eye, Upload, Clock, TrendingUp, Package, Check, Trash2 } from "lucide-react";
+import { Plus, Search, Eye, Upload, Clock, TrendingUp, Package, Check, Trash2, Truck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -55,6 +55,9 @@ export default function PurchaseOrdersPage() {
   const [detailLineSearch, setDetailLineSearch] = useState("");
   const [detailLineForm, setDetailLineForm] = useState<LineEntry>({ item_id: "", quantity: "1", unit_price: "0", discount_pct: "0", notes: "" });
   const [csvOpen, setCsvOpen] = useState(false);
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const [deliveryOpen, setDeliveryOpen] = useState(false);
+  const [deliveryForm, setDeliveryForm] = useState({ scheduled_date: "", quantity: "0", status: "scheduled", notes: "", po_line_id: "" });
   const qc = useQueryClient();
 
   const { data: suppliers = [] } = useQuery({
@@ -99,6 +102,17 @@ export default function PurchaseOrdersPage() {
       if (!detailId) return [];
       const { data, error } = await supabase.from("po_status_history").select("*").eq("purchase_order_id", detailId).order("created_at");
       if (error) throw error;
+      return data;
+    },
+    enabled: !!detailId,
+  });
+
+  const { data: poDeliveries = [] } = useQuery({
+    queryKey: ["po_deliveries", detailId],
+    queryFn: async () => {
+      if (!detailId) return [];
+      const { data, error } = await supabase.from("po_deliveries").select("*").eq("purchase_order_id", detailId).order("scheduled_date");
+      if (error) { console.warn("po_deliveries:", error.message); return []; }
       return data;
     },
     enabled: !!detailId,
@@ -237,6 +251,41 @@ export default function PurchaseOrdersPage() {
       qc.invalidateQueries({ queryKey: ["po_status_history", detailId] });
       toast.success("Stato aggiornato");
     },
+  });
+
+  const addDeliveryMut = useMutation({
+    mutationFn: async () => {
+      const { error } = await supabase.from("po_deliveries").insert({
+        purchase_order_id: detailId!,
+        po_line_id: deliveryForm.po_line_id || null,
+        scheduled_date: deliveryForm.scheduled_date,
+        quantity: parseFloat(deliveryForm.quantity),
+        status: deliveryForm.status,
+        notes: deliveryForm.notes || null,
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["po_deliveries", detailId] });
+      qc.invalidateQueries({ queryKey: ["po_deliveries"] });
+      setDeliveryOpen(false);
+      setDeliveryForm({ scheduled_date: "", quantity: "0", status: "scheduled", notes: "", po_line_id: "" });
+      toast.success("Consegna programmata");
+    },
+    onError: (e) => toast.error((e as Error).message),
+  });
+
+  const deleteDeliveryMut = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase.from("po_deliveries").delete().eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["po_deliveries", detailId] });
+      qc.invalidateQueries({ queryKey: ["po_deliveries"] });
+      toast.success("Consegna rimossa");
+    },
+    onError: (e) => toast.error((e as Error).message),
   });
 
   const deleteMut = useMutation({
@@ -761,6 +810,55 @@ export default function PurchaseOrdersPage() {
                 )}
               </div>
 
+              {/* Consegne Programmate */}
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <h3 className="text-xs font-mono uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                    <Truck className="h-3.5 w-3.5" /> Consegne Programmate
+                  </h3>
+                  <Button size="sm" onClick={() => setDeliveryOpen(true)} className="gap-1 h-7 text-xs"><Plus className="h-3 w-3" /> Aggiungi</Button>
+                </div>
+                {poDeliveries.length === 0 ? (
+                  <p className="text-xs text-muted-foreground py-2">Nessuna consegna programmata — aggiungi date di consegna scadenziata.</p>
+                ) : (
+                  <table className="w-full text-sm">
+                    <thead><tr className="border-b border-border">
+                      {["Data", "Qtà", "Stato", "Note", ""].map(h => (
+                        <th key={h} className="text-left p-2 text-muted-foreground text-xs font-mono">{h}</th>
+                      ))}
+                    </tr></thead>
+                    <tbody className="divide-y divide-border">
+                      {poDeliveries.map((d: any) => {
+                        const statusColors: Record<string, string> = {
+                          scheduled: "status-info", in_transit: "status-warning",
+                          received: "status-ok", delayed: "status-critical",
+                        };
+                        const statusLabels: Record<string, string> = {
+                          scheduled: "Programmata", in_transit: "In Transito",
+                          received: "Ricevuta", delayed: "In Ritardo",
+                        };
+                        return (
+                          <tr key={d.id}>
+                            <td className="p-2 font-mono text-xs">{d.scheduled_date}</td>
+                            <td className="p-2 font-mono text-xs">{Number(d.quantity)}</td>
+                            <td className="p-2"><Badge className={cn("text-xs", statusColors[d.status] || "status-info")}>{statusLabels[d.status] || d.status}</Badge></td>
+                            <td className="p-2 text-xs text-muted-foreground">{d.notes || "—"}</td>
+                            <td className="p-2">
+                              <button
+                                onClick={() => { if (window.confirm(`Rimuovere consegna del ${d.scheduled_date}?`)) deleteDeliveryMut.mutate(d.id); }}
+                                className="text-destructive/50 hover:text-destructive transition-colors"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+
               {/* Lines */}
               <div>
                 <div className="flex items-center justify-between mb-2">
@@ -842,6 +940,59 @@ export default function PurchaseOrdersPage() {
             <div className="flex justify-end gap-2">
               <Button type="button" variant="outline" onClick={() => setAddLineOpen(false)}>Annulla</Button>
               <Button type="submit" disabled={!detailLineForm.item_id || addLineMut.isPending}>Aggiungi</Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* ADD DELIVERY DIALOG */}
+      <Dialog open={deliveryOpen} onOpenChange={setDeliveryOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader><DialogTitle className="flex items-center gap-2"><Truck className="h-4 w-4 text-primary" /> Programma Consegna</DialogTitle></DialogHeader>
+          <form onSubmit={e => { e.preventDefault(); addDeliveryMut.mutate(); }} className="space-y-3">
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label className="text-xs">Data *</Label>
+                <Input type="date" className="font-mono h-8 text-xs" value={deliveryForm.scheduled_date} onChange={e => setDeliveryForm({ ...deliveryForm, scheduled_date: e.target.value })} required />
+              </div>
+              <div>
+                <Label className="text-xs">Quantità *</Label>
+                <Input type="number" step="0.01" min="0" className="font-mono h-8 text-xs" value={deliveryForm.quantity} onChange={e => setDeliveryForm({ ...deliveryForm, quantity: e.target.value })} required />
+              </div>
+            </div>
+            {poLines.length > 0 && (
+              <div>
+                <Label className="text-xs">Riga (opzionale)</Label>
+                <Select value={deliveryForm.po_line_id} onValueChange={v => setDeliveryForm({ ...deliveryForm, po_line_id: v })}>
+                  <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Tutta l'ordine..." /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="">Tutta l'ordine</SelectItem>
+                    {poLines.map(line => {
+                      const it = getItem(line.item_id);
+                      return <SelectItem key={line.id} value={line.id}>{it?.item_code} — {line.quantity} {it?.unit_of_measure}</SelectItem>;
+                    })}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+            <div>
+              <Label className="text-xs">Stato</Label>
+              <Select value={deliveryForm.status} onValueChange={v => setDeliveryForm({ ...deliveryForm, status: v })}>
+                <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {[["scheduled","Programmata"],["in_transit","In Transito"],["received","Ricevuta"],["delayed","In Ritardo"]].map(([val, label]) => (
+                    <SelectItem key={val} value={val}>{label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label className="text-xs">Note</Label>
+              <Input className="h-8 text-xs" value={deliveryForm.notes} onChange={e => setDeliveryForm({ ...deliveryForm, notes: e.target.value })} />
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button type="button" variant="outline" size="sm" onClick={() => setDeliveryOpen(false)}>Annulla</Button>
+              <Button type="submit" size="sm" disabled={!deliveryForm.scheduled_date || addDeliveryMut.isPending} className="gap-1"><Plus className="h-3 w-3" /> Salva</Button>
             </div>
           </form>
         </DialogContent>
