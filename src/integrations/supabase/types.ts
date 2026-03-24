@@ -255,6 +255,54 @@ export type Database = {
         }
         Relationships: []
       }
+      po_deliveries: {
+        Row: {
+          created_at: string
+          id: string
+          notes: string | null
+          po_line_id: string | null
+          purchase_order_id: string
+          quantity: number
+          scheduled_date: string
+          status: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          notes?: string | null
+          po_line_id?: string | null
+          purchase_order_id: string
+          quantity?: number
+          scheduled_date: string
+          status?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          notes?: string | null
+          po_line_id?: string | null
+          purchase_order_id?: string
+          quantity?: number
+          scheduled_date?: string
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "po_deliveries_po_line_id_fkey"
+            columns: ["po_line_id"]
+            isOneToOne: false
+            referencedRelation: "po_lines"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "po_deliveries_purchase_order_id_fkey"
+            columns: ["purchase_order_id"]
+            isOneToOne: false
+            referencedRelation: "purchase_orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       po_lines: {
         Row: {
           created_at: string
