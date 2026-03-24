@@ -333,6 +333,19 @@ export default function PurchaseOrdersPage() {
     onError: (e) => toast.error((e as Error).message),
   });
 
+  const updateDeliveryMut = useMutation({
+    mutationFn: async ({ id, updates }: { id: string; updates: Record<string, any> }) => {
+      const { error } = await (supabase.from as any)("po_deliveries").update(updates).eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["po_deliveries", detailId] });
+      qc.invalidateQueries({ queryKey: ["po_deliveries"] });
+      toast.success("Consegna aggiornata");
+    },
+    onError: (e) => toast.error((e as Error).message),
+  });
+
   const deleteMut = useMutation({
     mutationFn: async (orderId: string) => {
       // Scollega i lotti inventario (FK nullable)
