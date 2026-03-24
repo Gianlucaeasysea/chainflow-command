@@ -66,7 +66,7 @@ export default function PurchaseOrdersPage() {
   const [numDeliveries, setNumDeliveries] = useState("1");
   const [lineSearch, setLineSearch] = useState("");
   const [detailLineSearch, setDetailLineSearch] = useState("");
-  const [detailLineForm, setDetailLineForm] = useState<LineEntry>({ item_id: "", quantity: "1", unit_price: "0", discount_pct: "0", notes: "" });
+  const [detailLineForm, setDetailLineForm] = useState<LineEntry>({ item_id: "", quantity: "1", unit_price: "0", discount_pct: "0", notes: "", catalog_price: "0", price_source: "manual" });
   const [csvOpen, setCsvOpen] = useState(false);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [deliveryOpen, setDeliveryOpen] = useState(false);
