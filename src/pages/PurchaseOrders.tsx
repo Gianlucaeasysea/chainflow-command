@@ -594,12 +594,29 @@ export default function PurchaseOrdersPage() {
           {/* STEP 0: Header */}
           {createStep === 0 && (
             <div className="space-y-4">
-              <div>
-                <Label>Fornitore *</Label>
-                <Select value={form.supplier_id} onValueChange={v => setForm({ ...form, supplier_id: v })}>
-                  <SelectTrigger><SelectValue placeholder="Seleziona fornitore..." /></SelectTrigger>
-                  <SelectContent>{suppliers.map(s => <SelectItem key={s.id} value={s.id}>{s.company_name}</SelectItem>)}</SelectContent>
-                </Select>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label>Fornitore *</Label>
+                  <Select value={form.supplier_id} onValueChange={v => setForm({ ...form, supplier_id: v })}>
+                    <SelectTrigger><SelectValue placeholder="Seleziona fornitore..." /></SelectTrigger>
+                    <SelectContent>{suppliers.map(s => <SelectItem key={s.id} value={s.id}>{s.company_name}</SelectItem>)}</SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label>Prodotto di riferimento</Label>
+                  <Select value={form.product_item_id} onValueChange={v => setForm({ ...form, product_item_id: v })}>
+                    <SelectTrigger><SelectValue placeholder="Associa a un prodotto finito..." /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__none__">Nessuno</SelectItem>
+                      {items.filter(i => i.item_type === "Finished Product" || i.item_type === "Assembly").map(i => (
+                        <SelectItem key={i.id} value={i.id}>
+                          <span className="font-mono">{i.item_code}</span> — {i.description}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-[10px] text-muted-foreground mt-1">Collega l'ordine a un prodotto per la vista Timeline</p>
+                </div>
               </div>
               <div className="grid grid-cols-3 gap-3">
                 <div>
