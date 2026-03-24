@@ -121,7 +121,7 @@ export default function PurchaseOrdersPage() {
     queryKey: ["po_deliveries", detailId],
     queryFn: async () => {
       if (!detailId) return [];
-      const { data, error } = await supabase.from("po_deliveries").select("*").eq("purchase_order_id", detailId).order("scheduled_date");
+      const { data, error } = await (supabase.from as any)("po_deliveries").select("*").eq("purchase_order_id", detailId).order("scheduled_date");
       if (error) { console.warn("po_deliveries:", error.message); return []; }
       return data;
     },
