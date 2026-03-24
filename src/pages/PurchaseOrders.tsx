@@ -71,7 +71,7 @@ export default function PurchaseOrdersPage() {
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [deliveryOpen, setDeliveryOpen] = useState(false);
   const [deliveryForm, setDeliveryForm] = useState({ scheduled_date: "", quantity: "0", status: "scheduled", notes: "", po_line_id: "", destination: "" });
-  const [editingDeliveries, setEditingDeliveries] = useState<Record<string, { scheduled_date: string; quantity: string; status: string; notes: string; destination: string }>>({});
+  const [editingDeliveries, setEditingDeliveries] = useState<Record<string, { scheduled_date: string; quantity: string; status: string; notes: string; destination: string; actual_delivery_date: string }>>({});
   const qc = useQueryClient();
 
   const { data: suppliers = [] } = useQuery({
