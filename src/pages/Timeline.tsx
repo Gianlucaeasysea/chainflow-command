@@ -513,7 +513,7 @@ export default function TimelinePage() {
                 >
                   <SelectTrigger><SelectValue placeholder="Tutta l'ordine..." /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">Tutta l'ordine</SelectItem>
+                    <SelectItem value="__all__">Tutta l'ordine</SelectItem>
                     {selectedPoLines.map(line => {
                       const it = items.find(i => i.id === line.item_id);
                       return (

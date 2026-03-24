@@ -1127,7 +1127,7 @@ export default function PurchaseOrdersPage() {
                 <Select value={deliveryForm.po_line_id} onValueChange={v => setDeliveryForm({ ...deliveryForm, po_line_id: v })}>
                   <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Tutta l'ordine..." /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">Tutta l'ordine</SelectItem>
+                    <SelectItem value="__all__">Tutta l'ordine</SelectItem>
                     {poLines.map(line => {
                       const it = getItem(line.item_id);
                       return <SelectItem key={line.id} value={line.id}>{it?.item_code} — {line.quantity} {it?.unit_of_measure}</SelectItem>;
