@@ -108,7 +108,7 @@ export default function TimelinePage() {
 
   const addMut = useMutation({
     mutationFn: async () => {
-      const { error } = await supabase.from("po_deliveries").insert({
+      const { error } = await (supabase.from as any)("po_deliveries").insert({
         purchase_order_id: selectedPoId!,
         po_line_id: form.po_line_id || null,
         scheduled_date: form.scheduled_date,
