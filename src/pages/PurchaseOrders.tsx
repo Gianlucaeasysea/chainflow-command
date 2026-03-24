@@ -71,7 +71,7 @@ export default function PurchaseOrdersPage() {
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [deliveryOpen, setDeliveryOpen] = useState(false);
   const [deliveryForm, setDeliveryForm] = useState({ scheduled_date: "", quantity: "0", status: "scheduled", notes: "", po_line_id: "", destination: "" });
-  const [editingDeliveries, setEditingDeliveries] = useState<Record<string, { scheduled_date: string; quantity: string; status: string; notes: string; destination: string }>>({});
+  const [editingDeliveries, setEditingDeliveries] = useState<Record<string, { scheduled_date: string; quantity: string; status: string; notes: string; destination: string; actual_delivery_date: string }>>({});
   const qc = useQueryClient();
 
   const { data: suppliers = [] } = useQuery({
@@ -1180,11 +1180,16 @@ export default function PurchaseOrdersPage() {
                         <div key={d.id} className="border border-border rounded-lg p-3 space-y-2">
                           {isEditing ? (
                             <>
-                              <div className="grid grid-cols-3 gap-2">
+                              <div className="grid grid-cols-4 gap-2">
                                 <div>
                                   <Label className="text-[10px] font-mono uppercase text-muted-foreground">Data prevista</Label>
                                   <Input type="date" className="font-mono h-8 text-xs mt-1" value={ed.scheduled_date}
                                     onChange={e => setEditingDeliveries(prev => ({ ...prev, [d.id]: { ...prev[d.id], scheduled_date: e.target.value } }))} />
+                                </div>
+                                <div>
+                                  <Label className="text-[10px] font-mono uppercase text-muted-foreground">Consegna effettiva</Label>
+                                  <Input type="date" className="font-mono h-8 text-xs mt-1" value={ed.actual_delivery_date}
+                                    onChange={e => setEditingDeliveries(prev => ({ ...prev, [d.id]: { ...prev[d.id], actual_delivery_date: e.target.value } }))} />
                                 </div>
                                 <div>
                                   <Label className="text-[10px] font-mono uppercase text-muted-foreground">Quantità</Label>
@@ -1224,6 +1229,8 @@ export default function PurchaseOrdersPage() {
                                       quantity: parseFloat(ed.quantity),
                                       status: ed.status,
                                       notes: ed.notes || null,
+                                      destination: ed.destination || null,
+                                      actual_delivery_date: ed.actual_delivery_date || null,
                                     }});
                                     setEditingDeliveries(prev => { const n = { ...prev }; delete n[d.id]; return n; });
                                   }}>
@@ -1232,8 +1239,13 @@ export default function PurchaseOrdersPage() {
                               </div>
                             </>
                           ) : (
-                            <div className="flex items-center gap-3 text-xs">
+                            <div className="flex items-center gap-3 text-xs flex-wrap">
                               <span className="font-mono text-foreground font-medium">{d.scheduled_date}</span>
+                              {d.actual_delivery_date && (
+                                <span className="font-mono text-emerald-400 flex items-center gap-1">
+                                  <Check className="h-3 w-3" /> {d.actual_delivery_date}
+                                </span>
+                              )}
                               {lineItemData && <span className="font-mono text-primary">{lineItemData.item_code}</span>}
                               <span className="font-mono">{Number(d.quantity)} {lineItemData?.unit_of_measure || "PZ"}</span>
                               {d.destination && <span className="flex items-center gap-1 text-muted-foreground"><MapPin className="h-3 w-3" />{d.destination}</span>}
@@ -1241,7 +1253,7 @@ export default function PurchaseOrdersPage() {
                               {d.notes && <span className="text-muted-foreground truncate max-w-[120px]">{d.notes}</span>}
                               <div className="ml-auto flex items-center gap-1">
                                 <button onClick={() => setEditingDeliveries(prev => ({ ...prev, [d.id]: {
-                                  scheduled_date: d.scheduled_date, quantity: String(d.quantity), status: d.status, notes: d.notes || "", destination: d.destination || ""
+                                  scheduled_date: d.scheduled_date, quantity: String(d.quantity), status: d.status, notes: d.notes || "", destination: d.destination || "", actual_delivery_date: d.actual_delivery_date || ""
                                 }}))} className="text-muted-foreground hover:text-foreground transition-colors" title="Modifica">
                                   <Pencil className="h-3.5 w-3.5" />
                                 </button>

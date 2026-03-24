@@ -257,7 +257,10 @@ export type Database = {
       }
       po_deliveries: {
         Row: {
+          actual_delivery_date: string | null
           created_at: string
+          delivery_group_id: string | null
+          destination: string | null
           id: string
           notes: string | null
           po_line_id: string | null
@@ -267,7 +270,10 @@ export type Database = {
           status: string
         }
         Insert: {
+          actual_delivery_date?: string | null
           created_at?: string
+          delivery_group_id?: string | null
+          destination?: string | null
           id?: string
           notes?: string | null
           po_line_id?: string | null
@@ -277,7 +283,10 @@ export type Database = {
           status?: string
         }
         Update: {
+          actual_delivery_date?: string | null
           created_at?: string
+          delivery_group_id?: string | null
+          destination?: string | null
           id?: string
           notes?: string | null
           po_line_id?: string | null
