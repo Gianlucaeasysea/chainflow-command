@@ -66,7 +66,7 @@ export default function PurchaseOrdersPage() {
   const [numDeliveries, setNumDeliveries] = useState("1");
   const [lineSearch, setLineSearch] = useState("");
   const [detailLineSearch, setDetailLineSearch] = useState("");
-  const [detailLineForm, setDetailLineForm] = useState<LineEntry>({ item_id: "", quantity: "1", unit_price: "0", discount_pct: "0", notes: "" });
+  const [detailLineForm, setDetailLineForm] = useState<LineEntry>({ item_id: "", quantity: "1", unit_price: "0", discount_pct: "0", notes: "", catalog_price: "0", price_source: "manual" });
   const [csvOpen, setCsvOpen] = useState(false);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [deliveryOpen, setDeliveryOpen] = useState(false);
@@ -186,7 +186,7 @@ export default function PurchaseOrdersPage() {
 
   const createMut = useMutation({
     mutationFn: async () => {
-      const poNum = `PO-${new Date().getFullYear()}-${String(orders.length + 1).padStart(4, "0")}`;
+      const poNum = `PO-${new Date().getFullYear()}-${Date.now().toString(36).toUpperCase()}`;
       const initialStatus = form.is_pre_series ? "pre_series" : "draft";
       const { data, error } = await supabase.from("purchase_orders").insert({
         po_number: poNum, supplier_id: form.supplier_id, currency: form.currency,
@@ -275,7 +275,7 @@ export default function PurchaseOrdersPage() {
       qc.invalidateQueries({ queryKey: ["all_po_lines"] });
       qc.invalidateQueries({ queryKey: ["purchase_orders"] });
       setAddLineOpen(false);
-      setDetailLineForm({ item_id: "", quantity: "1", unit_price: "0", discount_pct: "0", notes: "" });
+      setDetailLineForm({ item_id: "", quantity: "1", unit_price: "0", discount_pct: "0", notes: "", catalog_price: "0", price_source: "manual" });
       toast.success("Riga aggiunta");
     },
     onError: (e) => toast.error((e as Error).message),
