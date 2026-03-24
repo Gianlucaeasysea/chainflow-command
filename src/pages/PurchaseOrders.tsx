@@ -744,7 +744,7 @@ export default function PurchaseOrdersPage() {
                             <Select value={d.item_id} onValueChange={v => setCreateDeliveries(prev => prev.map(x => x.tempId === d.tempId ? { ...x, item_id: v } : x))}>
                               <SelectTrigger className="h-7 text-xs w-36"><SelectValue placeholder="Intero ordine" /></SelectTrigger>
                               <SelectContent>
-                                <SelectItem value="">Intero ordine</SelectItem>
+                                <SelectItem value="__all__">Intero ordine</SelectItem>
                                 {createLines.map(l => {
                                   const it = getItem(l.item_id);
                                   return <SelectItem key={l.item_id} value={l.item_id}>{it?.item_code}</SelectItem>;
