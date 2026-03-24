@@ -60,7 +60,7 @@ export default function PurchaseOrdersPage() {
   const [createStep, setCreateStep] = useState(0); // 0=header, 1=lines, 2=deliveries, 3=review
   const [detailId, setDetailId] = useState<string | null>(null);
   const [addLineOpen, setAddLineOpen] = useState(false);
-  const [form, setForm] = useState({ supplier_id: "", currency: "EUR", incoterm: "EXW", shipping_port: "", requested_delivery_date: "", notes: "", is_pre_series: false });
+  const [form, setForm] = useState({ supplier_id: "", currency: "EUR", incoterm: "EXW", shipping_port: "", requested_delivery_date: "", notes: "", is_pre_series: false, product_item_id: "" });
   const [createLines, setCreateLines] = useState<LineEntry[]>([]);
   const [createDeliveries, setCreateDeliveries] = useState<DeliveryGroup[]>([]);
   const [numDeliveries, setNumDeliveries] = useState("1");
