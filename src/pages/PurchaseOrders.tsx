@@ -1,7 +1,7 @@
 import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { Plus, Search, Eye, Upload, Clock, TrendingUp, Package, Check, Trash2, Truck, MapPin, Layers, AlertCircle } from "lucide-react";
+import { Plus, Search, Eye, Upload, Clock, TrendingUp, Package, Check, Trash2, Truck, MapPin, Layers, AlertCircle, Pencil, Save } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -71,6 +71,7 @@ export default function PurchaseOrdersPage() {
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [deliveryOpen, setDeliveryOpen] = useState(false);
   const [deliveryForm, setDeliveryForm] = useState({ scheduled_date: "", quantity: "0", status: "scheduled", notes: "", po_line_id: "", destination: "" });
+  const [editingDeliveries, setEditingDeliveries] = useState<Record<string, { scheduled_date: string; quantity: string; status: string; notes: string; destination: string }>>({});
   const qc = useQueryClient();
 
   const { data: suppliers = [] } = useQuery({
@@ -328,6 +329,19 @@ export default function PurchaseOrdersPage() {
       qc.invalidateQueries({ queryKey: ["po_deliveries", detailId] });
       qc.invalidateQueries({ queryKey: ["po_deliveries"] });
       toast.success("Consegna rimossa");
+    },
+    onError: (e) => toast.error((e as Error).message),
+  });
+
+  const updateDeliveryMut = useMutation({
+    mutationFn: async ({ id, updates }: { id: string; updates: Record<string, any> }) => {
+      const { error } = await (supabase.from as any)("po_deliveries").update(updates).eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["po_deliveries", detailId] });
+      qc.invalidateQueries({ queryKey: ["po_deliveries"] });
+      toast.success("Consegna aggiornata");
     },
     onError: (e) => toast.error((e as Error).message),
   });
@@ -1153,47 +1167,95 @@ export default function PurchaseOrdersPage() {
                 {poDeliveries.length === 0 ? (
                   <p className="text-xs text-muted-foreground py-2">Nessuna consegna programmata — aggiungi date di consegna scadenziata.</p>
                 ) : (
-                  <table className="w-full text-sm">
-                    <thead><tr className="border-b border-border">
-                      {["Data", "Articolo", "Qtà", "Destinazione", "Stato", "Note", ""].map(h => (
-                        <th key={h} className="text-left p-2 text-muted-foreground text-xs font-mono">{h}</th>
-                      ))}
-                    </tr></thead>
-                    <tbody className="divide-y divide-border">
-                      {poDeliveries.map((d: any) => {
-                        const statusColors: Record<string, string> = {
-                          scheduled: "status-info", in_transit: "status-warning",
-                          received: "status-ok", delayed: "status-critical",
-                        };
-                        const statusLabels: Record<string, string> = {
-                          scheduled: "Programmata", in_transit: "In Transito",
-                          received: "Ricevuta", delayed: "In Ritardo",
-                        };
-                        const lineItem = d.po_line_id ? poLines.find((l: any) => l.id === d.po_line_id) : null;
-                        const lineItemData = lineItem ? getItem(lineItem.item_id) : null;
-                        return (
-                          <tr key={d.id}>
-                            <td className="p-2 font-mono text-xs">{d.scheduled_date}</td>
-                            <td className="p-2 font-mono text-xs text-primary">{lineItemData?.item_code || <span className="text-muted-foreground">—</span>}</td>
-                            <td className="p-2 font-mono text-xs">{Number(d.quantity)}</td>
-                            <td className="p-2 text-xs text-muted-foreground">
-                              {d.destination ? <span className="flex items-center gap-1"><MapPin className="h-3 w-3 shrink-0" />{d.destination}</span> : "—"}
-                            </td>
-                            <td className="p-2"><Badge className={cn("text-xs", statusColors[d.status] || "status-info")}>{statusLabels[d.status] || d.status}</Badge></td>
-                            <td className="p-2 text-xs text-muted-foreground">{d.notes || "—"}</td>
-                            <td className="p-2">
-                              <button
-                                onClick={() => { if (window.confirm(`Rimuovere consegna del ${d.scheduled_date}?`)) deleteDeliveryMut.mutate(d.id); }}
-                                className="text-destructive/50 hover:text-destructive transition-colors"
-                              >
-                                <Trash2 className="h-3.5 w-3.5" />
-                              </button>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
+                  <div className="space-y-2">
+                    {poDeliveries.map((d: any) => {
+                      const isEditing = !!editingDeliveries[d.id];
+                      const ed = editingDeliveries[d.id];
+                      const statusColors: Record<string, string> = { scheduled: "status-info", in_transit: "status-warning", received: "status-ok", delayed: "status-critical" };
+                      const statusLabels: Record<string, string> = { scheduled: "Programmata", in_transit: "In Transito", received: "Ricevuta", delayed: "In Ritardo" };
+                      const lineItem = d.po_line_id ? poLines.find((l: any) => l.id === d.po_line_id) : null;
+                      const lineItemData = lineItem ? getItem(lineItem.item_id) : null;
+
+                      return (
+                        <div key={d.id} className="border border-border rounded-lg p-3 space-y-2">
+                          {isEditing ? (
+                            <>
+                              <div className="grid grid-cols-3 gap-2">
+                                <div>
+                                  <Label className="text-[10px] font-mono uppercase text-muted-foreground">Data prevista</Label>
+                                  <Input type="date" className="font-mono h-8 text-xs mt-1" value={ed.scheduled_date}
+                                    onChange={e => setEditingDeliveries(prev => ({ ...prev, [d.id]: { ...prev[d.id], scheduled_date: e.target.value } }))} />
+                                </div>
+                                <div>
+                                  <Label className="text-[10px] font-mono uppercase text-muted-foreground">Quantità</Label>
+                                  <Input type="number" step="0.01" min="0" className="font-mono h-8 text-xs mt-1" value={ed.quantity}
+                                    onChange={e => setEditingDeliveries(prev => ({ ...prev, [d.id]: { ...prev[d.id], quantity: e.target.value } }))} />
+                                </div>
+                                <div>
+                                  <Label className="text-[10px] font-mono uppercase text-muted-foreground">Stato</Label>
+                                  <Select value={ed.status} onValueChange={v => setEditingDeliveries(prev => ({ ...prev, [d.id]: { ...prev[d.id], status: v } }))}>
+                                    <SelectTrigger className="h-8 text-xs mt-1"><SelectValue /></SelectTrigger>
+                                    <SelectContent>
+                                      {[["scheduled","Programmata"],["in_transit","In Transito"],["received","Ricevuta"],["delayed","In Ritardo"]].map(([val, label]) => (
+                                        <SelectItem key={val} value={val}>{label}</SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                              </div>
+                              <div className="grid grid-cols-2 gap-2">
+                                <div>
+                                  <Label className="text-[10px] font-mono uppercase text-muted-foreground flex items-center gap-1"><MapPin className="h-2.5 w-2.5" /> Destinazione</Label>
+                                  <Input className="h-8 text-xs mt-1" placeholder="es. Magazzino Milano..." value={ed.destination}
+                                    onChange={e => setEditingDeliveries(prev => ({ ...prev, [d.id]: { ...prev[d.id], destination: e.target.value } }))} />
+                                </div>
+                                <div>
+                                  <Label className="text-[10px] font-mono uppercase text-muted-foreground">Note</Label>
+                                  <Input className="h-8 text-xs mt-1" value={ed.notes}
+                                    onChange={e => setEditingDeliveries(prev => ({ ...prev, [d.id]: { ...prev[d.id], notes: e.target.value } }))} />
+                                </div>
+                              </div>
+                              <div className="flex justify-end gap-2">
+                                <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => setEditingDeliveries(prev => { const n = { ...prev }; delete n[d.id]; return n; })}>Annulla</Button>
+                                <Button size="sm" className="h-7 text-xs gap-1" disabled={updateDeliveryMut.isPending}
+                                  onClick={() => {
+                                    updateDeliveryMut.mutate({ id: d.id, updates: {
+                                      scheduled_date: ed.scheduled_date,
+                                      quantity: parseFloat(ed.quantity),
+                                      status: ed.status,
+                                      notes: ed.notes || null,
+                                    }});
+                                    setEditingDeliveries(prev => { const n = { ...prev }; delete n[d.id]; return n; });
+                                  }}>
+                                  <Save className="h-3 w-3" /> Salva
+                                </Button>
+                              </div>
+                            </>
+                          ) : (
+                            <div className="flex items-center gap-3 text-xs">
+                              <span className="font-mono text-foreground font-medium">{d.scheduled_date}</span>
+                              {lineItemData && <span className="font-mono text-primary">{lineItemData.item_code}</span>}
+                              <span className="font-mono">{Number(d.quantity)} {lineItemData?.unit_of_measure || "PZ"}</span>
+                              {d.destination && <span className="flex items-center gap-1 text-muted-foreground"><MapPin className="h-3 w-3" />{d.destination}</span>}
+                              <Badge className={cn("text-[10px]", statusColors[d.status] || "status-info")}>{statusLabels[d.status] || d.status}</Badge>
+                              {d.notes && <span className="text-muted-foreground truncate max-w-[120px]">{d.notes}</span>}
+                              <div className="ml-auto flex items-center gap-1">
+                                <button onClick={() => setEditingDeliveries(prev => ({ ...prev, [d.id]: {
+                                  scheduled_date: d.scheduled_date, quantity: String(d.quantity), status: d.status, notes: d.notes || "", destination: d.destination || ""
+                                }}))} className="text-muted-foreground hover:text-foreground transition-colors" title="Modifica">
+                                  <Pencil className="h-3.5 w-3.5" />
+                                </button>
+                                <button onClick={() => { if (window.confirm(`Rimuovere consegna del ${d.scheduled_date}?`)) deleteDeliveryMut.mutate(d.id); }}
+                                  className="text-destructive/50 hover:text-destructive transition-colors" title="Elimina">
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
                 )}
               </div>
 
