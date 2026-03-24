@@ -283,7 +283,7 @@ export default function PurchaseOrdersPage() {
 
   const addDeliveryMut = useMutation({
     mutationFn: async () => {
-      const { error } = await supabase.from("po_deliveries").insert({
+      const { error } = await (supabase.from as any)("po_deliveries").insert({
         purchase_order_id: detailId!,
         po_line_id: deliveryForm.po_line_id || null,
         scheduled_date: deliveryForm.scheduled_date,
