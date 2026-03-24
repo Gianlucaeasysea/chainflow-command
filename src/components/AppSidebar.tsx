@@ -9,6 +9,7 @@ import {
   DollarSign,
   Layers,
   Clock,
+  GanttChart,
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { useLocation } from "react-router-dom";
@@ -40,6 +41,7 @@ const operationsItems = [
 ];
 
 const analyticsItems = [
+  { title: "Timeline", url: "/timeline", icon: GanttChart },
   { title: "Costi", url: "/costs", icon: DollarSign },
   { title: "Riordino", url: "/reorder", icon: RefreshCcw },
 ];

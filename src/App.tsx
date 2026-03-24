@@ -14,6 +14,7 @@ import InventoryPage from "./pages/Inventory";
 import LotsPage from "./pages/Lots";
 import CostsPage from "./pages/Costs";
 import ReorderPage from "./pages/Reorder";
+import TimelinePage from "./pages/Timeline";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -36,6 +37,7 @@ const App = () => (
             <Route path="/lots" element={<LotsPage />} />
             <Route path="/costs" element={<CostsPage />} />
             <Route path="/reorder" element={<ReorderPage />} />
+            <Route path="/timeline" element={<TimelinePage />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </AppLayout>
