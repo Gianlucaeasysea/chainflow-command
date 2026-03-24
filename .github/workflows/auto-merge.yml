@@ -13,43 +13,53 @@ jobs:
       pull-requests: write
 
     steps:
-      - name: Create PR and merge
+      - name: Checkout full repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Merge branch into main
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           BRANCH: ${{ github.ref_name }}
           REPO: ${{ github.repository }}
         run: |
-          set -e
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git config user.name "github-actions[bot]"
 
-          # Abilita auto-merge sul repo (ignora errori)
-          gh api repos/$REPO --method PATCH -f allow_auto_merge=true 2>/dev/null || true
+          git fetch origin main
+          git checkout main
 
-          # Cerca PR aperta esistente
-          PR=$(gh pr list --repo "$REPO" --base main --head "$BRANCH" \
-            --state open --json number -q '.[0].number' 2>/dev/null || echo "")
-
-          if [ -z "$PR" ]; then
-            echo "Creo nuova PR..."
-            PR=$(gh pr create \
-              --repo "$REPO" \
-              --base main \
-              --head "$BRANCH" \
-              --title "Claude: sync $BRANCH" \
-              --body "PR automatica da Claude Code." \
-              --json number -q '.number')
-            echo "PR creata: #$PR"
+          echo "Tento merge diretto di $BRANCH in main..."
+          if git merge --no-ff "origin/$BRANCH" -m "Auto-merge $BRANCH in main"; then
+            git push origin main
+            echo "Merge e push completati con successo"
           else
-            echo "PR esistente: #$PR"
-          fi
+            echo "Merge fallito (conflitti), provo via PR..."
+            git merge --abort 2>/dev/null || true
+            git checkout "$BRANCH"
 
-          echo "Mergio PR #$PR via API..."
-          # Usa API GitHub direttamente — bypassa requirements UI
-          gh api "repos/$REPO/pulls/$PR/merge" \
-            --method PUT \
-            -f merge_method=merge \
-            -f commit_title="Auto-merge PR #$PR da $BRANCH" \
-            && echo "Merge completato con successo" \
-            || {
-              echo "API merge fallita, provo gh pr merge..."
-              gh pr merge "$PR" --repo "$REPO" --merge --delete-branch=false --admin
-            }
+            # Cerca PR aperta esistente
+            PR=$(gh pr list --repo "$REPO" --base main --head "$BRANCH" \
+              --state open --json number -q '.[0].number' 2>/dev/null || echo "")
+
+            if [ -z "$PR" ]; then
+              PR=$(gh pr create \
+                --repo "$REPO" \
+                --base main \
+                --head "$BRANCH" \
+                --title "Claude: sync $BRANCH" \
+                --body "PR automatica da Claude Code." \
+                --json number -q '.number')
+              echo "PR creata: #$PR"
+            else
+              echo "PR esistente: #$PR"
+            fi
+
+            gh api "repos/$REPO/pulls/$PR/merge" \
+              --method PUT \
+              -f merge_method=merge \
+              -f commit_title="Auto-merge PR #$PR da $BRANCH" \
+              && echo "PR merge completato"
+          fi
