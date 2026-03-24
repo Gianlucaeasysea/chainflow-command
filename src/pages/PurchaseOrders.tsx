@@ -275,7 +275,7 @@ export default function PurchaseOrdersPage() {
       qc.invalidateQueries({ queryKey: ["all_po_lines"] });
       qc.invalidateQueries({ queryKey: ["purchase_orders"] });
       setAddLineOpen(false);
-      setDetailLineForm({ item_id: "", quantity: "1", unit_price: "0", discount_pct: "0", notes: "" });
+      setDetailLineForm({ item_id: "", quantity: "1", unit_price: "0", discount_pct: "0", notes: "", catalog_price: "0", price_source: "manual" });
       toast.success("Riga aggiunta");
     },
     onError: (e) => toast.error((e as Error).message),
