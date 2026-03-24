@@ -123,7 +123,7 @@ export default function TimelinePage() {
   });
 
   const deleteMut = useMutation({
-    mutationFn: async (id: string) => { const { error } = await supabase.from("po_deliveries").delete().eq("id", id); if (error) throw error; },
+    mutationFn: async (id: string) => { const { error } = await (supabase.from as any)("po_deliveries").delete().eq("id", id); if (error) throw error; },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["po_deliveries"] }); toast.success("Consegna rimossa"); },
     onError: (e) => toast.error((e as Error).message),
   });

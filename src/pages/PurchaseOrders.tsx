@@ -305,7 +305,7 @@ export default function PurchaseOrdersPage() {
 
   const deleteDeliveryMut = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase.from("po_deliveries").delete().eq("id", id);
+      const { error } = await (supabase.from as any)("po_deliveries").delete().eq("id", id);
       if (error) throw error;
     },
     onSuccess: () => {
