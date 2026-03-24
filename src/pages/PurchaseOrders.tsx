@@ -463,42 +463,49 @@ export default function PurchaseOrdersPage() {
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b border-border bg-muted/30">
-                    {["N° PO", "Fornitore", "Stato", "Data Ordine", "Consegna Rich.", "Consegna Eff.", "LT", "Totale", ""].map(h => (
-                      <th key={h} className="text-left p-3 text-muted-foreground text-xs uppercase tracking-wider font-mono font-medium">{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border">
-                  {isLoading ? (
-                    <tr><td colSpan={9} className="p-8 text-center text-muted-foreground">Caricamento...</td></tr>
-                  ) : filtered.length === 0 ? (
-                    <tr><td colSpan={9} className="p-8 text-center text-muted-foreground">Nessun ordine</td></tr>
-                  ) : filtered.map(o => {
-                    const si = getStatusInfo(o.status);
-                    const lt = o.order_date && o.actual_delivery_date
-                      ? Math.round((new Date(o.actual_delivery_date).getTime() - new Date(o.order_date).getTime()) / 86400000) : null;
-                    return (
-                      <tr key={o.id} className="hover:bg-muted/20 transition-colors cursor-pointer" onClick={() => setDetailId(o.id)}>
-                        <td className="p-3 font-mono text-primary font-medium">{o.po_number}</td>
-                        <td className="p-3 text-foreground">{getSupplierName(o.supplier_id)}</td>
-                        <td className="p-3"><Badge className={cn("text-xs", si.color)}>{si.label}</Badge></td>
-                        <td className="p-3 font-mono text-xs text-muted-foreground">{o.order_date || "—"}</td>
-                        <td className="p-3 font-mono text-xs text-muted-foreground">{o.requested_delivery_date || "—"}</td>
-                        <td className="p-3 font-mono text-xs text-muted-foreground">{o.actual_delivery_date || "—"}</td>
-                        <td className="p-3 font-mono text-xs">
-                          {lt !== null ? <Badge variant="outline" className={cn("font-mono", lt > 30 ? "border-destructive text-destructive" : "border-primary text-primary")}>{lt}gg</Badge> : "—"}
-                        </td>
-                        <td className="p-3 font-mono text-foreground">€{Number(o.total_amount || 0).toLocaleString()}</td>
-                        <td className="p-3 flex items-center gap-2">
-                          <Eye className="h-4 w-4 text-muted-foreground" />
-                          <button
-                            onClick={(e) => { e.stopPropagation(); if (window.confirm(`Eliminare ${o.po_number}? Questa operazione è irreversibile.`)) deleteMut.mutate(o.id); }}
-                            className="text-destructive/60 hover:text-destructive transition-colors"
-                            title="Elimina ordine"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </button>
+                   <tr className="border-b border-border bg-muted/30">
+                     {["N° PO", "Fornitore", "Prodotto", "Stato", "Data Ordine", "Consegna Eff.", "LT", "Totale", ""].map(h => (
+                       <th key={h} className="text-left p-3 text-muted-foreground text-xs uppercase tracking-wider font-mono font-medium">{h}</th>
+                     ))}
+                   </tr>
+                 </thead>
+                 <tbody className="divide-y divide-border">
+                   {isLoading ? (
+                     <tr><td colSpan={9} className="p-8 text-center text-muted-foreground">Caricamento...</td></tr>
+                   ) : filtered.length === 0 ? (
+                     <tr><td colSpan={9} className="p-8 text-center text-muted-foreground">Nessun ordine</td></tr>
+                   ) : filtered.map(o => {
+                     const si = getStatusInfo(o.status);
+                     const lt = o.order_date && o.actual_delivery_date
+                       ? Math.round((new Date(o.actual_delivery_date).getTime() - new Date(o.order_date).getTime()) / 86400000) : null;
+                     const productItem = (o as any).product_item_id ? getItem((o as any).product_item_id) : null;
+                     return (
+                       <tr key={o.id} className="hover:bg-muted/20 transition-colors cursor-pointer" onClick={() => setDetailId(o.id)}>
+                         <td className="p-3 font-mono text-primary font-medium">{o.po_number}</td>
+                         <td className="p-3 text-foreground">{getSupplierName(o.supplier_id)}</td>
+                         <td className="p-3">
+                           {productItem ? (
+                             <span className="font-mono text-xs text-primary/80">{productItem.item_code}</span>
+                           ) : (
+                             <span className="text-xs text-muted-foreground">—</span>
+                           )}
+                         </td>
+                         <td className="p-3"><Badge className={cn("text-xs", si.color)}>{si.label}</Badge></td>
+                         <td className="p-3 font-mono text-xs text-muted-foreground">{o.order_date || "—"}</td>
+                         <td className="p-3 font-mono text-xs text-muted-foreground">{o.actual_delivery_date || "—"}</td>
+                         <td className="p-3 font-mono text-xs">
+                           {lt !== null ? <Badge variant="outline" className={cn("font-mono", lt > 30 ? "border-destructive text-destructive" : "border-primary text-primary")}>{lt}gg</Badge> : "—"}
+                         </td>
+                         <td className="p-3 font-mono text-foreground">€{Number(o.total_amount || 0).toLocaleString()}</td>
+                         <td className="p-3 flex items-center gap-2">
+                           <Eye className="h-4 w-4 text-muted-foreground" />
+                           <button
+                             onClick={(e) => { e.stopPropagation(); if (window.confirm(`Eliminare ${o.po_number}? Questa operazione è irreversibile.`)) deleteMut.mutate(o.id); }}
+                             className="text-destructive/60 hover:text-destructive transition-colors"
+                             title="Elimina ordine"
+                           >
+                             <Trash2 className="h-4 w-4" />
+                           </button>
                         </td>
                       </tr>
                     );
