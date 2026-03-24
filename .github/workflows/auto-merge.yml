@@ -1,0 +1,49 @@
+name: Auto-merge claude branches
+
+on:
+  push:
+    branches:
+      - 'claude/**'
+
+jobs:
+  auto-merge:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - name: Create PR if missing
+        id: create_pr
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BRANCH: ${{ github.ref_name }}
+          REPO: ${{ github.repository }}
+        run: |
+          # Check for existing open PR
+          PR=$(gh pr list --repo "$REPO" --base main --head "$BRANCH" --state open --json number -q '.[0].number')
+
+          if [ -z "$PR" ]; then
+            echo "Creating new PR..."
+            URL=$(gh pr create \
+              --repo "$REPO" \
+              --base main \
+              --head "$BRANCH" \
+              --title "Claude: sync $BRANCH" \
+              --body "Automatic PR created by Claude Code.")
+            PR=$(echo "$URL" | grep -o '[0-9]*$')
+            echo "Created PR #$PR"
+          else
+            echo "PR #$PR already exists"
+          fi
+
+          echo "pr_number=$PR" >> "$GITHUB_OUTPUT"
+
+      - name: Merge PR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          PR=${{ steps.create_pr.outputs.pr_number }}
+          echo "Merging PR #$PR..."
+          gh pr merge "$PR" --repo "$REPO" --merge --delete-branch=false
