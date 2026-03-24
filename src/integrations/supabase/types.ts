@@ -484,6 +484,7 @@ export type Database = {
           notes: string | null
           order_date: string | null
           po_number: string
+          product_item_id: string | null
           requested_delivery_date: string | null
           shipping_port: string | null
           status: string
@@ -500,6 +501,7 @@ export type Database = {
           notes?: string | null
           order_date?: string | null
           po_number: string
+          product_item_id?: string | null
           requested_delivery_date?: string | null
           shipping_port?: string | null
           status?: string
@@ -516,6 +518,7 @@ export type Database = {
           notes?: string | null
           order_date?: string | null
           po_number?: string
+          product_item_id?: string | null
           requested_delivery_date?: string | null
           shipping_port?: string | null
           status?: string
@@ -524,6 +527,13 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "purchase_orders_product_item_id_fkey"
+            columns: ["product_item_id"]
+            isOneToOne: false
+            referencedRelation: "items"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "purchase_orders_supplier_id_fkey"
             columns: ["supplier_id"]
