@@ -103,12 +103,12 @@ export default function TimelinePage() {
   const { data: suppliers = [] } = useQuery({ queryKey: ["suppliers"], queryFn: async () => { const { data, error } = await supabase.from("suppliers").select("id,company_name"); if (error) throw error; return data; } });
   const { data: orders = [] }  = useQuery<PO[]>({ queryKey: ["purchase_orders"], queryFn: async () => { const { data, error } = await supabase.from("purchase_orders").select("id,po_number,supplier_id,status,order_date,requested_delivery_date,actual_delivery_date"); if (error) throw error; return data as PO[]; } });
   const { data: poLines = [] } = useQuery<PoLine[]>({ queryKey: ["all_po_lines"], queryFn: async () => { const { data, error } = await supabase.from("po_lines").select("id,purchase_order_id,item_id,quantity"); if (error) throw error; return data as PoLine[]; } });
-  const { data: deliveries = [] } = useQuery<PoDelivery[]>({ queryKey: ["po_deliveries"], queryFn: async () => { const { data, error } = await supabase.from("po_deliveries").select("*").order("scheduled_date"); if (error) { console.warn("po_deliveries not available yet:", error.message); return []; } return data as PoDelivery[]; } });
+  const { data: deliveries = [] } = useQuery<PoDelivery[]>({ queryKey: ["po_deliveries"], queryFn: async () => { const { data, error } = await (supabase.from as any)("po_deliveries").select("*").order("scheduled_date"); if (error) { console.warn("po_deliveries not available yet:", error.message); return []; } return data as PoDelivery[]; } });
   const { data: wos = [] }     = useQuery<WO[]>({ queryKey: ["production_orders"], queryFn: async () => { const { data, error } = await supabase.from("production_orders").select("id,wo_number,product_item_id,quantity_to_produce,status,planned_start,planned_end,actual_start,actual_end"); if (error) throw error; return data as WO[]; } });
 
   const addMut = useMutation({
     mutationFn: async () => {
-      const { error } = await supabase.from("po_deliveries").insert({
+      const { error } = await (supabase.from as any)("po_deliveries").insert({
         purchase_order_id: selectedPoId!,
         po_line_id: form.po_line_id || null,
         scheduled_date: form.scheduled_date,
@@ -123,7 +123,7 @@ export default function TimelinePage() {
   });
 
   const deleteMut = useMutation({
-    mutationFn: async (id: string) => { const { error } = await supabase.from("po_deliveries").delete().eq("id", id); if (error) throw error; },
+    mutationFn: async (id: string) => { const { error } = await (supabase.from as any)("po_deliveries").delete().eq("id", id); if (error) throw error; },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["po_deliveries"] }); toast.success("Consegna rimossa"); },
     onError: (e) => toast.error((e as Error).message),
   });
@@ -513,12 +513,12 @@ export default function TimelinePage() {
                 >
                   <SelectTrigger><SelectValue placeholder="Tutta l'ordine..." /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">Tutta l'ordine</SelectItem>
+                    <SelectItem value="__all__">Tutta l'ordine</SelectItem>
                     {selectedPoLines.map(line => {
                       const it = items.find(i => i.id === line.item_id);
                       return (
                         <SelectItem key={line.id} value={line.id}>
-                          {it?.item_code} — {line.quantity} {it?.unit_of_measure ?? ""}
+                          {it?.item_code} — {line.quantity}
                         </SelectItem>
                       );
                     })}
