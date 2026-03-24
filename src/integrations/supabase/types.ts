@@ -257,7 +257,6 @@ export type Database = {
       }
       po_deliveries: {
         Row: {
-          actual_date: string | null
           created_at: string
           id: string
           notes: string | null
@@ -266,10 +265,8 @@ export type Database = {
           quantity: number
           scheduled_date: string
           status: string
-          updated_at: string
         }
         Insert: {
-          actual_date?: string | null
           created_at?: string
           id?: string
           notes?: string | null
@@ -278,10 +275,8 @@ export type Database = {
           quantity?: number
           scheduled_date: string
           status?: string
-          updated_at?: string
         }
         Update: {
-          actual_date?: string | null
           created_at?: string
           id?: string
           notes?: string | null
@@ -290,7 +285,6 @@ export type Database = {
           quantity?: number
           scheduled_date?: string
           status?: string
-          updated_at?: string
         }
         Relationships: [
           {

@@ -124,7 +124,7 @@ export default function PurchaseOrdersPage() {
     queryKey: ["po_deliveries", detailId],
     queryFn: async () => {
       if (!detailId) return [];
-      const { data, error } = await supabase.from("po_deliveries").select("*").eq("purchase_order_id", detailId).order("scheduled_date");
+      const { data, error } = await (supabase.from as any)("po_deliveries").select("*").eq("purchase_order_id", detailId).order("scheduled_date");
       if (error) { console.warn("po_deliveries:", error.message); return []; }
       return data;
     },
@@ -237,7 +237,7 @@ export default function PurchaseOrdersPage() {
           }
         }
         if (allDeliveryRows.length > 0) {
-          const { error: deliveryErr } = await supabase.from("po_deliveries").insert(allDeliveryRows);
+          const { error: deliveryErr } = await (supabase.from as any)("po_deliveries").insert(allDeliveryRows);
           if (deliveryErr) throw deliveryErr;
         }
       }
@@ -298,7 +298,7 @@ export default function PurchaseOrdersPage() {
 
   const addDeliveryMut = useMutation({
     mutationFn: async () => {
-      const { error } = await supabase.from("po_deliveries").insert({
+      const { error } = await (supabase.from as any)("po_deliveries").insert({
         purchase_order_id: detailId!,
         po_line_id: deliveryForm.po_line_id || null,
         scheduled_date: deliveryForm.scheduled_date,
@@ -321,7 +321,7 @@ export default function PurchaseOrdersPage() {
 
   const deleteDeliveryMut = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase.from("po_deliveries").delete().eq("id", id);
+      const { error } = await (supabase.from as any)("po_deliveries").delete().eq("id", id);
       if (error) throw error;
     },
     onSuccess: () => {
@@ -1304,7 +1304,7 @@ export default function PurchaseOrdersPage() {
                 <Select value={deliveryForm.po_line_id} onValueChange={v => setDeliveryForm({ ...deliveryForm, po_line_id: v })}>
                   <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Tutta l'ordine..." /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">Tutta l'ordine</SelectItem>
+                    <SelectItem value="__all__">Tutta l'ordine</SelectItem>
                     {poLines.map(line => {
                       const it = getItem(line.item_id);
                       return <SelectItem key={line.id} value={line.id}>{it?.item_code} — {line.quantity} {it?.unit_of_measure}</SelectItem>;
