@@ -378,7 +378,7 @@ export default function PurchaseOrdersPage() {
     setCreateDeliveries([]);
     setNumDeliveries("1");
     setLineSearch("");
-    setForm({ supplier_id: "", currency: "EUR", incoterm: "EXW", shipping_port: "", requested_delivery_date: "", notes: "", is_pre_series: false });
+    setForm({ supplier_id: "", currency: "EUR", incoterm: "EXW", shipping_port: "", requested_delivery_date: "", notes: "", is_pre_series: false, product_item_id: "" });
   };
 
   const toggleCreateLine = (itemId: string) => {
