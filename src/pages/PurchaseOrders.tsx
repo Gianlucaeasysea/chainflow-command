@@ -223,7 +223,7 @@ export default function PurchaseOrdersPage() {
           status: d.status,
           notes: d.notes || null,
         }));
-        const { error: deliveryErr } = await supabase.from("po_deliveries").insert(deliveryRows);
+        const { error: deliveryErr } = await (supabase.from as any)("po_deliveries").insert(deliveryRows);
         if (deliveryErr) throw deliveryErr;
       }
 
