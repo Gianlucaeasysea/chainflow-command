@@ -189,13 +189,14 @@ export default function PurchaseOrdersPage() {
     mutationFn: async () => {
       const poNum = `PO-${new Date().getFullYear()}-${Date.now().toString(36).toUpperCase()}`;
       const initialStatus = form.is_pre_series ? "pre_series" : "draft";
-      const { data, error } = await supabase.from("purchase_orders").insert({
+      const { data, error } = await (supabase.from as any)("purchase_orders").insert({
         po_number: poNum, supplier_id: form.supplier_id, currency: form.currency,
         incoterm: form.incoterm, shipping_port: form.shipping_port || null,
         requested_delivery_date: form.requested_delivery_date || null,
         notes: form.notes || null,
         order_date: new Date().toISOString().split("T")[0],
         status: initialStatus,
+        product_item_id: form.product_item_id || null,
       }).select().single();
       if (error) throw error;
 
