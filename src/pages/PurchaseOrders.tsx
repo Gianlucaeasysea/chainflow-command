@@ -196,7 +196,7 @@ export default function PurchaseOrdersPage() {
         notes: form.notes || null,
         order_date: new Date().toISOString().split("T")[0],
         status: initialStatus,
-        product_item_id: form.product_item_id || null,
+        product_item_id: (form.product_item_id && form.product_item_id !== "__none__") ? form.product_item_id : null,
       }).select().single();
       if (error) throw error;
 
