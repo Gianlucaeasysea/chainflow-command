@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/select";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import ExportButton from "@/components/ExportButton";
 
 const MGMT_TYPES = [
   { value: "reorder_point", label: "Punto di Riordino" },
