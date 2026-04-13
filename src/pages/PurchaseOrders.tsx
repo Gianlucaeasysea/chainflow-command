@@ -1176,14 +1176,30 @@ export default function PurchaseOrdersPage() {
                   })}
                 </div>
                 {statusHistory.length > 0 && (
-                  <div className="mt-3 space-y-1">
-                    {statusHistory.map(h => (
-                      <div key={h.id} className="flex items-center gap-2 text-xs">
-                        <span className="font-mono text-muted-foreground w-32">{new Date(h.created_at).toLocaleString("it-IT")}</span>
-                        <Badge className={cn("text-[10px]", getStatusInfo(h.status).color)}>{getStatusInfo(h.status).label}</Badge>
-                        {h.notes && <span className="text-muted-foreground">{h.notes}</span>}
-                      </div>
-                    ))}
+                  <div className="mt-4">
+                    <h4 className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground mb-2">Storico Avanzamento</h4>
+                    <div className="relative pl-4 space-y-3 border-l-2 border-border ml-1">
+                      {[...statusHistory].reverse().map((h) => {
+                        const statusColorMap: Record<string, string> = {
+                          draft: "bg-muted-foreground", sent: "bg-blue-500", confirmed: "bg-indigo-500",
+                          pre_series: "bg-purple-500", in_production: "bg-orange-500", shipping: "bg-yellow-500",
+                          customs: "bg-amber-500", delivered: "bg-green-500", closed: "bg-green-700", cancelled: "bg-red-500",
+                        };
+                        const dotColor = statusColorMap[h.status] || "bg-muted-foreground";
+                        return (
+                          <div key={h.id} className="relative flex items-start gap-3">
+                            <div className={cn("absolute -left-[21px] top-1 w-3 h-3 rounded-full border-2 border-background", dotColor)} />
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2">
+                                <Badge className={cn("text-[10px]", getStatusInfo(h.status).color)}>{getStatusInfo(h.status).label}</Badge>
+                                <span className="font-mono text-[10px] text-muted-foreground">{new Date(h.created_at).toLocaleString("it-IT", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })}</span>
+                              </div>
+                              {h.notes && <p className="text-xs text-muted-foreground mt-0.5">{h.notes}</p>}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
                 )}
               </div>
