@@ -105,8 +105,8 @@ export default function LotsPage() {
             const item = items.find(i => i.id === l.item_id);
             return { ...l, item_code: item?.item_code || "", item_desc: item?.description || "" };
           }) as any} />
+          <Button onClick={() => setCreateOpen(true)} className="gap-2"><Plus className="h-4 w-4" /> Nuovo Lotto</Button>
         </div>
-        <Button onClick={() => setCreateOpen(true)} className="gap-2"><Plus className="h-4 w-4" /> Nuovo Lotto</Button>
       </div>
 
       <div className="flex gap-3">
