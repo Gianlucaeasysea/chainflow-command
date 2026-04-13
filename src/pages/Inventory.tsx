@@ -1,7 +1,9 @@
 import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { Plus, Search, AlertTriangle } from "lucide-react";
+import { Plus, Search, AlertTriangle, Boxes } from "lucide-react";
+import TableSkeleton from "@/components/TableSkeleton";
+import EmptyState from "@/components/EmptyState";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -259,9 +261,9 @@ export default function InventoryPage() {
                 </thead>
                 <tbody className="divide-y divide-border">
                   {movLoading ? (
-                    <tr><td colSpan={6} className="p-8 text-center text-muted-foreground">Caricamento...</td></tr>
+                    <tr><td colSpan={6}><TableSkeleton rows={5} columns={5} /></td></tr>
                   ) : filteredMovements.length === 0 ? (
-                    <tr><td colSpan={6} className="p-8 text-center text-muted-foreground">Nessun movimento</td></tr>
+                    <tr><td colSpan={6}><EmptyState icon={Boxes} message="Nessun movimento registrato." actionLabel="Nuovo Movimento" onAction={() => setCreateOpen(true)} /></td></tr>
                   ) : (
                     filteredMovements.slice(0, 100).map((m) => {
                       const mt = MOVEMENT_TYPES.find((t) => t.value === m.movement_type);

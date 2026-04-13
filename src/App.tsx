@@ -5,7 +5,9 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AppLayout } from "@/components/AppLayout";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
 import type { Session } from "@supabase/supabase-js";
 import Dashboard from "./pages/Dashboard";
 import SuppliersPage from "./pages/Suppliers";
@@ -21,7 +23,28 @@ import TimelinePage from "./pages/Timeline";
 import LoginPage from "./pages/Login";
 import NotFound from "./pages/NotFound";
 
-const queryClient = new QueryClient();
+function traduciErroreSupabase(msg: string): string {
+  if (msg.includes("duplicate key")) return "Elemento già presente nel sistema";
+  if (msg.includes("foreign key")) return "Impossibile eliminare: elemento in uso";
+  if (msg.includes("not null") || msg.includes("not-null")) return "Campo obbligatorio mancante";
+  if (msg.includes("JWT expired")) return "Sessione scaduta — effettua il login";
+  return msg;
+}
+
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      retry: 1,
+      staleTime: 30_000,
+      refetchOnWindowFocus: false,
+    },
+    mutations: {
+      onError: (error) => {
+        toast.error("Errore: " + traduciErroreSupabase((error as Error).message));
+      },
+    },
+  },
+});
 
 function AppRoutes() {
   const [session, setSession] = useState<Session | null>(null);
@@ -83,7 +106,9 @@ const App = () => (
       <Toaster />
       <Sonner />
       <BrowserRouter>
-        <AppRoutes />
+        <ErrorBoundary>
+          <AppRoutes />
+        </ErrorBoundary>
       </BrowserRouter>
     </TooltipProvider>
   </QueryClientProvider>

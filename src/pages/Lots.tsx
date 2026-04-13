@@ -1,7 +1,9 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { Plus, Search } from "lucide-react";
+import { Plus, Search, Layers } from "lucide-react";
+import TableSkeleton from "@/components/TableSkeleton";
+import EmptyState from "@/components/EmptyState";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -135,9 +137,9 @@ export default function LotsPage() {
             </thead>
             <tbody className="divide-y divide-border">
               {isLoading ? (
-                <tr><td colSpan={9} className="p-8 text-center text-muted-foreground">Caricamento...</td></tr>
+                <tr><td colSpan={9}><TableSkeleton rows={5} columns={7} /></td></tr>
               ) : filtered.length === 0 ? (
-                <tr><td colSpan={9} className="p-8 text-center text-muted-foreground">Nessun lotto</td></tr>
+                <tr><td colSpan={9}><EmptyState icon={Layers} message="Nessun lotto presente in magazzino." actionLabel="Nuovo Lotto" onAction={() => setCreateOpen(true)} /></td></tr>
               ) : filtered.map(lot => {
                 const si = getStatusInfo(lot.status);
                 const daysToExpiry = getDaysToExpiry(lot.expiry_date);
