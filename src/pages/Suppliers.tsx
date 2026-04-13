@@ -1,7 +1,9 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { Plus, Search, Star, MoreHorizontal, Pencil, Trash2, Upload } from "lucide-react";
+import { Plus, Search, Star, MoreHorizontal, Pencil, Trash2, Upload, Users } from "lucide-react";
+import TableSkeleton from "@/components/TableSkeleton";
+import EmptyState from "@/components/EmptyState";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -158,11 +160,22 @@ export default function SuppliersPage() {
                 ))}
               </tr>
             </thead>
+      {isLoading ? <TableSkeleton rows={5} columns={7} /> : filtered.length === 0 && !search ? (
+        <EmptyState icon={Users} message="Nessun fornitore. Aggiungi il primo fornitore." actionLabel="Nuovo Fornitore" onAction={openNew} />
+      ) : (
+      <div className="bg-card border border-border rounded-lg overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-border bg-muted/30">
+                {["Ragione Sociale", "Paese", "Contatto", "Rating", "Termini", "Incoterm", "Stato", ""].map(h => (
+                  <th key={h} className="text-left p-3 text-muted-foreground text-xs uppercase tracking-wider font-mono font-medium">{h}</th>
+                ))}
+              </tr>
+            </thead>
             <tbody className="divide-y divide-border">
-              {isLoading ? (
-                <tr><td colSpan={8} className="p-8 text-center text-muted-foreground">Caricamento...</td></tr>
-              ) : filtered.length === 0 ? (
-                <tr><td colSpan={8} className="p-8 text-center text-muted-foreground">{search ? "Nessun risultato" : "Nessun fornitore — crea il primo"}</td></tr>
+              {filtered.length === 0 ? (
+                <tr><td colSpan={8} className="p-8 text-center text-muted-foreground">Nessun risultato</td></tr>
               ) : filtered.map((s) => (
                 <tr key={s.id} className="hover:bg-muted/20 transition-colors cursor-pointer" onClick={() => setDetailId(s.id)}>
                   <td className="p-3 font-medium text-foreground">{s.company_name}</td>
