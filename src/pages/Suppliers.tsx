@@ -150,17 +150,7 @@ export default function SuppliersPage() {
         <Input placeholder="Cerca per nome, paese, P.IVA..." className="pl-9 font-mono text-sm" value={search} onChange={(e) => setSearch(e.target.value)} />
       </div>
 
-      <div className="bg-card border border-border rounded-lg overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border bg-muted/30">
-                {["Ragione Sociale", "Paese", "Contatto", "Rating", "Termini", "Incoterm", "Stato", ""].map(h => (
-                  <th key={h} className="text-left p-3 text-muted-foreground text-xs uppercase tracking-wider font-mono font-medium">{h}</th>
-                ))}
-              </tr>
-            </thead>
-      {isLoading ? <TableSkeleton rows={5} columns={7} /> : filtered.length === 0 && !search ? (
+      {isLoading ? <TableSkeleton rows={5} columns={7} /> : suppliers.length === 0 && !search ? (
         <EmptyState icon={Users} message="Nessun fornitore. Aggiungi il primo fornitore." actionLabel="Nuovo Fornitore" onAction={openNew} />
       ) : (
       <div className="bg-card border border-border rounded-lg overflow-hidden">
