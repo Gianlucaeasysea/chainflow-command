@@ -120,9 +120,46 @@ export default function BomPage() {
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["bom_headers"] }); toast.success("Stato aggiornato"); },
   });
 
+  const updateStandardCostMut = useMutation({
+    mutationFn: async ({ itemId, cost, version }: { itemId: string; cost: number; version: number }) => {
+      const { error: histErr } = await supabase.from("cost_history").insert({
+        item_id: itemId,
+        cost_type: "standard",
+        amount: cost,
+        effective_date: new Date().toISOString().slice(0, 10),
+        source: `Aggiornato da BOM v${version}`,
+      });
+      if (histErr) throw histErr;
+      const { error: itemErr } = await supabase.from("items").update({ unit_cost: cost }).eq("id", itemId);
+      if (itemErr) throw itemErr;
+    },
+    onSuccess: (_, vars) => {
+      qc.invalidateQueries({ queryKey: ["items"] });
+      qc.invalidateQueries({ queryKey: ["cost_history_standard"] });
+      toast.success(`Costo standard aggiornato: €${vars.cost.toFixed(2)}`);
+    },
+    onError: (e) => toast.error((e as Error).message),
+  });
+
   const getItem = (id: string) => items.find((i: any) => i.id === id);
   const getItemName = (id: string) => { const item = getItem(id); return item ? `${item.item_code} — ${item.description}` : id; };
   const getItemCode = (id: string) => getItem(id)?.item_code || "?";
+
+  // Check if a BOM's cost is outdated vs last standard cost_history
+  const getLatestStandardCost = (itemId: string) => {
+    const record = costHistory.find(c => c.item_id === itemId);
+    return record ? Number(record.amount) : null;
+  };
+
+  const isCostOutdated = (bom: typeof bomHeaders[0]) => {
+    // We need to compute BOM cost for this header — only meaningful for selected BOM
+    // For list view, compare item.unit_cost with a quick flag
+    const lastStd = getLatestStandardCost(bom.item_id);
+    if (lastStd === null) return true; // never set
+    const item = getItem(bom.item_id) as any;
+    const itemCost = Number(item?.unit_cost || 0);
+    return Math.abs(lastStd - itemCost) > 0.01 || lastStd === 0;
+  };
 
   const selectedHeader = bomHeaders.find(b => b.id === selectedBom);
 
