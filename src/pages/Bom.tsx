@@ -45,6 +45,16 @@ export default function BomPage() {
     },
   });
 
+  // Load latest standard cost from cost_history for all BOM parent items
+  const { data: costHistory = [] } = useQuery({
+    queryKey: ["cost_history_standard"],
+    queryFn: async () => {
+      const { data, error } = await supabase.from("cost_history").select("*").eq("cost_type", "standard").order("effective_date", { ascending: false });
+      if (error) throw error;
+      return data;
+    },
+  });
+
   const { data: bomLines = [] } = useQuery({
     queryKey: ["bom_lines", selectedBom],
     queryFn: async () => {
