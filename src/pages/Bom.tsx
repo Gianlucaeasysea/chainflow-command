@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { Plus, Layers, Trash2, Eye, Search } from "lucide-react";
+import { Plus, Layers, Trash2, Eye, Search, RefreshCw, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -40,6 +40,16 @@ export default function BomPage() {
     queryKey: ["bom_headers"],
     queryFn: async () => {
       const { data, error } = await supabase.from("bom_headers").select("*").order("created_at", { ascending: false });
+      if (error) throw error;
+      return data;
+    },
+  });
+
+  // Load latest standard cost from cost_history for all BOM parent items
+  const { data: costHistory = [] } = useQuery({
+    queryKey: ["cost_history_standard"],
+    queryFn: async () => {
+      const { data, error } = await supabase.from("cost_history").select("*").eq("cost_type", "standard").order("effective_date", { ascending: false });
       if (error) throw error;
       return data;
     },
@@ -110,9 +120,46 @@ export default function BomPage() {
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["bom_headers"] }); toast.success("Stato aggiornato"); },
   });
 
+  const updateStandardCostMut = useMutation({
+    mutationFn: async ({ itemId, cost, version }: { itemId: string; cost: number; version: number }) => {
+      const { error: histErr } = await supabase.from("cost_history").insert({
+        item_id: itemId,
+        cost_type: "standard",
+        amount: cost,
+        effective_date: new Date().toISOString().slice(0, 10),
+        source: `Aggiornato da BOM v${version}`,
+      });
+      if (histErr) throw histErr;
+      const { error: itemErr } = await supabase.from("items").update({ unit_cost: cost }).eq("id", itemId);
+      if (itemErr) throw itemErr;
+    },
+    onSuccess: (_, vars) => {
+      qc.invalidateQueries({ queryKey: ["items"] });
+      qc.invalidateQueries({ queryKey: ["cost_history_standard"] });
+      toast.success(`Costo standard aggiornato: €${vars.cost.toFixed(2)}`);
+    },
+    onError: (e) => toast.error((e as Error).message),
+  });
+
   const getItem = (id: string) => items.find((i: any) => i.id === id);
   const getItemName = (id: string) => { const item = getItem(id); return item ? `${item.item_code} — ${item.description}` : id; };
   const getItemCode = (id: string) => getItem(id)?.item_code || "?";
+
+  // Check if a BOM's cost is outdated vs last standard cost_history
+  const getLatestStandardCost = (itemId: string) => {
+    const record = costHistory.find(c => c.item_id === itemId);
+    return record ? Number(record.amount) : null;
+  };
+
+  const isCostOutdated = (bom: typeof bomHeaders[0]) => {
+    // We need to compute BOM cost for this header — only meaningful for selected BOM
+    // For list view, compare item.unit_cost with a quick flag
+    const lastStd = getLatestStandardCost(bom.item_id);
+    if (lastStd === null) return true; // never set
+    const item = getItem(bom.item_id) as any;
+    const itemCost = Number(item?.unit_cost || 0);
+    return Math.abs(lastStd - itemCost) > 0.01 || lastStd === 0;
+  };
 
   const selectedHeader = bomHeaders.find(b => b.id === selectedBom);
 
@@ -159,7 +206,14 @@ export default function BomPage() {
                   <div className="text-sm font-medium text-foreground truncate">{getItemCode(bom.item_id)}</div>
                   <div className="text-xs text-muted-foreground">v{bom.version}</div>
                 </div>
-                <Badge className={cn("text-xs shrink-0", statusColors[bom.status])}>{bom.status}</Badge>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  {bom.status === "active" && isCostOutdated(bom) && (
+                    <Badge variant="outline" className="text-[10px] border-orange-400 text-orange-500 gap-0.5">
+                      <AlertTriangle className="h-3 w-3" /> Costo
+                    </Badge>
+                  )}
+                  <Badge className={cn("text-xs", statusColors[bom.status])}>{bom.status}</Badge>
+                </div>
               </button>
             ))}
           </div>
@@ -191,19 +245,38 @@ export default function BomPage() {
               </div>
 
               {/* Cost Summary */}
-              <div className="p-4 border-b border-border bg-muted/20 grid grid-cols-3 gap-4">
-                <div>
-                  <div className="text-[10px] font-mono uppercase text-muted-foreground">Costo Componenti</div>
-                  <div className="text-lg font-mono text-foreground">€{bomTotalCost.toFixed(2)}</div>
+              <div className="p-4 border-b border-border bg-muted/20">
+                <div className="grid grid-cols-3 gap-4">
+                  <div>
+                    <div className="text-[10px] font-mono uppercase text-muted-foreground">Costo Componenti</div>
+                    <div className="text-lg font-mono text-foreground">€{bomTotalCost.toFixed(2)}</div>
+                  </div>
+                  <div>
+                    <div className="text-[10px] font-mono uppercase text-muted-foreground">Costo Assemblaggio</div>
+                    <div className="text-lg font-mono text-foreground">€{parentAssemblyCost.toFixed(2)}</div>
+                  </div>
+                  <div>
+                    <div className="text-[10px] font-mono uppercase text-muted-foreground">Costo Totale Prodotto</div>
+                    <div className="text-lg font-mono text-primary font-bold">€{totalProductCost.toFixed(2)}</div>
+                  </div>
                 </div>
-                <div>
-                  <div className="text-[10px] font-mono uppercase text-muted-foreground">Costo Assemblaggio</div>
-                  <div className="text-lg font-mono text-foreground">€{parentAssemblyCost.toFixed(2)}</div>
-                </div>
-                <div>
-                  <div className="text-[10px] font-mono uppercase text-muted-foreground">Costo Totale Prodotto</div>
-                  <div className="text-lg font-mono text-primary font-bold">€{totalProductCost.toFixed(2)}</div>
-                </div>
+                {(() => {
+                  const lastStd = getLatestStandardCost(selectedHeader.item_id);
+                  const outdated = lastStd === null || Math.abs(lastStd - totalProductCost) > 0.01;
+                  return outdated ? (
+                    <div className="mt-3 flex items-center justify-between bg-orange-500/10 border border-orange-500/30 rounded-md px-3 py-2">
+                      <div className="flex items-center gap-2 text-xs text-orange-600">
+                        <AlertTriangle className="h-3.5 w-3.5" />
+                        <span>Costo standard {lastStd !== null ? `(€${lastStd.toFixed(2)})` : "(mai impostato)"} diverso dal costo BOM calcolato</span>
+                      </div>
+                      <Button size="sm" variant="outline" className="gap-1 text-xs h-7"
+                        disabled={updateStandardCostMut.isPending}
+                        onClick={() => updateStandardCostMut.mutate({ itemId: selectedHeader.item_id, cost: totalProductCost, version: selectedHeader.version })}>
+                        <RefreshCw className="h-3 w-3" /> Aggiorna Costo Standard
+                      </Button>
+                    </div>
+                  ) : null;
+                })()}
               </div>
 
               <div className="overflow-x-auto">
