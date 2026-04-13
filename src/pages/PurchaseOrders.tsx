@@ -285,11 +285,18 @@ export default function PurchaseOrdersPage() {
 
   const changeStatusMut = useMutation({
     mutationFn: async ({ orderId, newStatus }: { orderId: string; newStatus: string }) => {
+      const currentOrder = orders.find(o => o.id === orderId);
+      const oldStatus = currentOrder?.status || "unknown";
       const updates: Record<string, any> = { status: newStatus };
       if (newStatus === "delivered") updates.actual_delivery_date = new Date().toISOString().split("T")[0];
-      const { error: e1 } = await supabase.from("purchase_orders").update(updates).eq("id", orderId);
-      if (e1) throw e1;
-      await supabase.from("po_status_history").insert({ purchase_order_id: orderId, status: newStatus });
+      await Promise.all([
+        supabase.from("purchase_orders").update(updates).eq("id", orderId).then(({ error }) => { if (error) throw error; }),
+        supabase.from("po_status_history").insert({
+          purchase_order_id: orderId,
+          status: newStatus,
+          notes: `Da ${getStatusInfo(oldStatus).label} → ${getStatusInfo(newStatus).label}`,
+        }).then(({ error }) => { if (error) console.warn("History log error:", error.message); }),
+      ]);
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["purchase_orders"] });
