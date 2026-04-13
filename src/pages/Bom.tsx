@@ -245,19 +245,38 @@ export default function BomPage() {
               </div>
 
               {/* Cost Summary */}
-              <div className="p-4 border-b border-border bg-muted/20 grid grid-cols-3 gap-4">
-                <div>
-                  <div className="text-[10px] font-mono uppercase text-muted-foreground">Costo Componenti</div>
-                  <div className="text-lg font-mono text-foreground">€{bomTotalCost.toFixed(2)}</div>
+              <div className="p-4 border-b border-border bg-muted/20">
+                <div className="grid grid-cols-3 gap-4">
+                  <div>
+                    <div className="text-[10px] font-mono uppercase text-muted-foreground">Costo Componenti</div>
+                    <div className="text-lg font-mono text-foreground">€{bomTotalCost.toFixed(2)}</div>
+                  </div>
+                  <div>
+                    <div className="text-[10px] font-mono uppercase text-muted-foreground">Costo Assemblaggio</div>
+                    <div className="text-lg font-mono text-foreground">€{parentAssemblyCost.toFixed(2)}</div>
+                  </div>
+                  <div>
+                    <div className="text-[10px] font-mono uppercase text-muted-foreground">Costo Totale Prodotto</div>
+                    <div className="text-lg font-mono text-primary font-bold">€{totalProductCost.toFixed(2)}</div>
+                  </div>
                 </div>
-                <div>
-                  <div className="text-[10px] font-mono uppercase text-muted-foreground">Costo Assemblaggio</div>
-                  <div className="text-lg font-mono text-foreground">€{parentAssemblyCost.toFixed(2)}</div>
-                </div>
-                <div>
-                  <div className="text-[10px] font-mono uppercase text-muted-foreground">Costo Totale Prodotto</div>
-                  <div className="text-lg font-mono text-primary font-bold">€{totalProductCost.toFixed(2)}</div>
-                </div>
+                {(() => {
+                  const lastStd = getLatestStandardCost(selectedHeader.item_id);
+                  const outdated = lastStd === null || Math.abs(lastStd - totalProductCost) > 0.01;
+                  return outdated ? (
+                    <div className="mt-3 flex items-center justify-between bg-orange-500/10 border border-orange-500/30 rounded-md px-3 py-2">
+                      <div className="flex items-center gap-2 text-xs text-orange-600">
+                        <AlertTriangle className="h-3.5 w-3.5" />
+                        <span>Costo standard {lastStd !== null ? `(€${lastStd.toFixed(2)})` : "(mai impostato)"} diverso dal costo BOM calcolato</span>
+                      </div>
+                      <Button size="sm" variant="outline" className="gap-1 text-xs h-7"
+                        disabled={updateStandardCostMut.isPending}
+                        onClick={() => updateStandardCostMut.mutate({ itemId: selectedHeader.item_id, cost: totalProductCost, version: selectedHeader.version })}>
+                        <RefreshCw className="h-3 w-3" /> Aggiorna Costo Standard
+                      </Button>
+                    </div>
+                  ) : null;
+                })()}
               </div>
 
               <div className="overflow-x-auto">
