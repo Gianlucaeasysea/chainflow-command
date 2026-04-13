@@ -1,11 +1,14 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Settings, AlertTriangle, CheckCircle, ShoppingCart } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
@@ -29,7 +32,15 @@ export default function ReorderPage() {
     reorder_point: "0", safety_stock: "0", eoq: "0", max_stock: "0",
     management_type: "reorder_point", service_level: "95",
   });
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [poDialogOpen, setPoDialogOpen] = useState(false);
+  const [poSupplierId, setPoSupplierId] = useState("");
+  const [poNotes, setPoNotes] = useState("");
+  const [poOrderDate, setPoOrderDate] = useState(new Date().toISOString().slice(0, 10));
+  const [poDeliveryDate, setPoDeliveryDate] = useState("");
+  const [poLines, setPoLines] = useState<{ itemId: string; qty: number; price: number }[]>([]);
   const qc = useQueryClient();
+  const navigate = useNavigate();
 
   const { data: items = [] } = useQuery({
     queryKey: ["items"],
@@ -44,6 +55,16 @@ export default function ReorderPage() {
   const { data: movements = [] } = useQuery({
     queryKey: ["stock_movements"],
     queryFn: async () => { const { data, error } = await supabase.from("stock_movements").select("*"); if (error) throw error; return data; },
+  });
+
+  const { data: suppliers = [] } = useQuery({
+    queryKey: ["suppliers"],
+    queryFn: async () => { const { data, error } = await supabase.from("suppliers").select("*").eq("is_active", true).order("company_name"); if (error) throw error; return data; },
+  });
+
+  const { data: supplierItems = [] } = useQuery({
+    queryKey: ["supplier_items"],
+    queryFn: async () => { const { data, error } = await supabase.from("supplier_items").select("*"); if (error) throw error; return data; },
   });
 
   const upsertMut = useMutation({
@@ -74,11 +95,64 @@ export default function ReorderPage() {
     onError: (e) => toast.error((e as Error).message),
   });
 
-  // Compute current stock from movements
+  const createPoMut = useMutation({
+    mutationFn: async () => {
+      // Generate PO number
+      const year = new Date().getFullYear();
+      const { data: existingPos } = await supabase.from("purchase_orders").select("po_number").ilike("po_number", `PO-${year}-%`);
+      const seq = (existingPos?.length || 0) + 1;
+      const poNumber = `PO-${year}-${String(seq).padStart(4, "0")}`;
+
+      const totalAmount = poLines.reduce((s, l) => s + l.qty * l.price, 0);
+
+      const { data: poData, error: poErr } = await supabase.from("purchase_orders").insert({
+        po_number: poNumber,
+        supplier_id: poSupplierId,
+        order_date: poOrderDate,
+        requested_delivery_date: poDeliveryDate || null,
+        status: "draft",
+        notes: poNotes || null,
+        total_amount: totalAmount,
+      }).select("id").single();
+      if (poErr) throw poErr;
+
+      const lineRows = poLines.map((l, idx) => ({
+        purchase_order_id: poData.id,
+        item_id: l.itemId,
+        quantity: l.qty,
+        unit_price: l.price,
+        sort_order: idx,
+        line_total: l.qty * l.price,
+      }));
+      const { error: lineErr } = await supabase.from("po_lines").insert(lineRows);
+      if (lineErr) throw lineErr;
+
+      if (poDeliveryDate) {
+        const { error: delErr } = await supabase.from("po_deliveries").insert({
+          purchase_order_id: poData.id,
+          scheduled_date: poDeliveryDate,
+          quantity: poLines.reduce((s, l) => s + l.qty, 0),
+          status: "scheduled",
+        });
+        if (delErr) throw delErr;
+      }
+
+      return poNumber;
+    },
+    onSuccess: (poNumber) => {
+      qc.invalidateQueries({ queryKey: ["purchase_orders"] });
+      qc.invalidateQueries({ queryKey: ["po_lines"] });
+      setPoDialogOpen(false);
+      setSelectedIds(new Set());
+      toast.success(`ODA ${poNumber} creato`, {
+        action: { label: "Apri ODA", onClick: () => navigate("/purchase-orders") },
+      });
+    },
+    onError: (e) => toast.error((e as Error).message),
+  });
+
   const getStock = (itemId: string) => {
-    return movements
-      .filter(m => m.item_id === itemId)
-      .reduce((sum, m) => sum + Number(m.quantity), 0);
+    return movements.filter(m => m.item_id === itemId).reduce((sum, m) => sum + Number(m.quantity), 0);
   };
 
   const itemsWithStatus = items.map(item => {
@@ -112,12 +186,80 @@ export default function ReorderPage() {
     setConfigOpen(true);
   };
 
+  const toggleSelect = (id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const selectAllCritical = () => {
+    const criticalIds = suggestions.filter(i => i.status === "critical").map(i => i.id);
+    setSelectedIds(new Set(criticalIds));
+  };
+
+  const openPoDialog = () => {
+    const selected = suggestions.filter(i => selectedIds.has(i.id));
+    // Find best supplier per item
+    const supplierCounts: Record<string, number> = {};
+    const lines = selected.map(item => {
+      const siForItem = supplierItems.filter(si => si.item_id === item.id);
+      const bestSi = siForItem.sort((a, b) => Number(a.unit_price || 999999) - Number(b.unit_price || 999999))[0];
+      if (bestSi) supplierCounts[bestSi.supplier_id] = (supplierCounts[bestSi.supplier_id] || 0) + 1;
+
+      const rop = item.rop || 0;
+      const ss = item.safetyStock || 0;
+      const eoq = item.eoq || 0;
+      let suggestedQty = Math.max(eoq, rop + ss - item.stock);
+      // Round up to order_multiple
+      const mult = bestSi?.order_multiple || 1;
+      if (mult > 1) suggestedQty = Math.ceil(suggestedQty / mult) * mult;
+
+      return {
+        itemId: item.id,
+        qty: Math.max(suggestedQty, 1),
+        price: Number(bestSi?.unit_price || 0),
+      };
+    });
+
+    // Pre-select the supplier with the most items
+    const bestSupplier = Object.entries(supplierCounts).sort((a, b) => b[1] - a[1])[0];
+    setPoSupplierId(bestSupplier?.[0] || "");
+
+    // Compute average lead time for delivery date
+    const allSi = selected.flatMap(item => supplierItems.filter(si => si.item_id === item.id && si.lead_time_days));
+    const avgLead = allSi.length > 0 ? Math.round(allSi.reduce((s, si) => s + Number(si.lead_time_days), 0) / allSi.length) : 14;
+    const delivDate = new Date();
+    delivDate.setDate(delivDate.getDate() + avgLead);
+    setPoDeliveryDate(delivDate.toISOString().slice(0, 10));
+
+    setPoLines(lines);
+    setPoOrderDate(new Date().toISOString().slice(0, 10));
+    setPoNotes("");
+    setPoDialogOpen(true);
+  };
+
   const statusIcon = (s: string) => {
     if (s === "ok") return <CheckCircle className="h-4 w-4 text-status-ok" />;
     if (s === "warning") return <AlertTriangle className="h-4 w-4 text-status-warning" />;
     if (s === "critical") return <AlertTriangle className="h-4 w-4 text-status-critical" />;
     return <Settings className="h-4 w-4 text-muted-foreground/50" />;
   };
+
+  const getItemInfo = (id: string) => items.find(i => i.id === id);
+  const poTotal = poLines.reduce((s, l) => s + l.qty * l.price, 0);
+
+  // Check if selected items have multiple different preferred suppliers
+  const hasMultipleSuppliers = (() => {
+    const supplierSet = new Set<string>();
+    for (const id of selectedIds) {
+      const siForItem = supplierItems.filter(si => si.item_id === id);
+      const best = siForItem.sort((a, b) => Number(a.unit_price || 999999) - Number(b.unit_price || 999999))[0];
+      if (best) supplierSet.add(best.supplier_id);
+    }
+    return supplierSet.size > 1;
+  })();
 
   return (
     <div className="space-y-6">
@@ -143,6 +285,10 @@ export default function ReorderPage() {
               const suggestedQty = item.eoq || (item.maxStock ? item.maxStock - item.stock : 0);
               return (
                 <div key={item.id} className="p-3 flex items-center gap-4">
+                  <Checkbox
+                    checked={selectedIds.has(item.id)}
+                    onCheckedChange={() => toggleSelect(item.id)}
+                  />
                   {statusIcon(item.status)}
                   <div className="flex-1 min-w-0">
                     <span className="font-mono text-primary text-xs">{item.item_code}</span>
@@ -152,12 +298,21 @@ export default function ReorderPage() {
                     <div className="font-mono text-xs text-muted-foreground">Stock: <span className={cn(item.status === "critical" ? "text-status-critical" : "text-status-warning")}>{item.stock.toFixed(0)}</span> / ROP: {item.rop?.toFixed(0)}</div>
                     <div className="font-mono text-xs text-foreground">Suggerito: <span className="text-primary">{suggestedQty.toFixed(0)} {item.unit_of_measure}</span></div>
                   </div>
-                  <Button size="sm" variant="outline" className="h-7 text-xs gap-1 shrink-0">
-                    <ShoppingCart className="h-3 w-3" /> Crea PO
-                  </Button>
                 </div>
               );
             })}
+          </div>
+          {/* Action bar */}
+          <div className="p-3 border-t border-border flex items-center gap-2 bg-muted/20">
+            <Button size="sm" variant="ghost" className="text-xs h-7" onClick={selectAllCritical}>
+              Seleziona tutti critici
+            </Button>
+            <div className="flex-1" />
+            {selectedIds.size > 0 && (
+              <Button size="sm" className="gap-1 h-8" onClick={openPoDialog}>
+                <ShoppingCart className="h-3.5 w-3.5" /> Genera PO ({selectedIds.size} selezionati)
+              </Button>
+            )}
           </div>
         </div>
       )}
@@ -197,6 +352,7 @@ export default function ReorderPage() {
         </div>
       </div>
 
+      {/* Config Dialog */}
       <Dialog open={configOpen} onOpenChange={setConfigOpen}>
         <DialogContent>
           <DialogHeader><DialogTitle>Parametri Riordino — {configItem?.item_code}</DialogTitle></DialogHeader>
@@ -222,6 +378,95 @@ export default function ReorderPage() {
               <Button type="submit" disabled={upsertMut.isPending}>Salva</Button>
             </div>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Generate PO Dialog */}
+      <Dialog open={poDialogOpen} onOpenChange={setPoDialogOpen}>
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader><DialogTitle>Genera Ordine d'Acquisto</DialogTitle></DialogHeader>
+          <div className="space-y-4">
+            {/* Supplier */}
+            <div>
+              <Label>Fornitore *</Label>
+              <Select value={poSupplierId} onValueChange={setPoSupplierId}>
+                <SelectTrigger><SelectValue placeholder="Seleziona fornitore..." /></SelectTrigger>
+                <SelectContent>
+                  {suppliers.map((s: any) => <SelectItem key={s.id} value={s.id}>{s.company_name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+              {hasMultipleSuppliers && (
+                <p className="text-xs text-status-warning mt-1 flex items-center gap-1">
+                  <AlertTriangle className="h-3 w-3" /> Articoli con fornitori diversi — verifica il listino
+                </p>
+              )}
+            </div>
+
+            {/* Dates */}
+            <div className="grid grid-cols-2 gap-3">
+              <div><Label>Data Ordine</Label><Input type="date" className="font-mono" value={poOrderDate} onChange={e => setPoOrderDate(e.target.value)} /></div>
+              <div><Label>Data Consegna Attesa</Label><Input type="date" className="font-mono" value={poDeliveryDate} onChange={e => setPoDeliveryDate(e.target.value)} /></div>
+            </div>
+
+            {/* Lines table */}
+            <div className="border border-border rounded-lg overflow-hidden">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-border bg-muted/30">
+                    {["Articolo", "Qtà suggerita", "Prezzo unit.", "Totale"].map(h => (
+                      <th key={h} className="text-left p-2 text-muted-foreground text-xs uppercase font-mono">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {poLines.map((line, idx) => {
+                    const item = getItemInfo(line.itemId);
+                    return (
+                      <tr key={line.itemId} className="hover:bg-muted/20">
+                        <td className="p-2">
+                          <span className="font-mono text-primary text-xs">{item?.item_code || "?"}</span>
+                          <span className="text-xs text-muted-foreground ml-1">{item?.description || ""}</span>
+                        </td>
+                        <td className="p-2">
+                          <Input type="number" min="1" className="w-20 h-7 text-xs font-mono" value={line.qty}
+                            onChange={e => {
+                              const next = [...poLines];
+                              next[idx] = { ...next[idx], qty: Number(e.target.value) || 1 };
+                              setPoLines(next);
+                            }} />
+                        </td>
+                        <td className="p-2">
+                          <Input type="number" step="0.01" className="w-24 h-7 text-xs font-mono" value={line.price}
+                            onChange={e => {
+                              const next = [...poLines];
+                              next[idx] = { ...next[idx], price: Number(e.target.value) || 0 };
+                              setPoLines(next);
+                            }} />
+                        </td>
+                        <td className="p-2 font-mono text-xs text-foreground">€{(line.qty * line.price).toFixed(2)}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+                <tfoot>
+                  <tr className="border-t border-border bg-muted/20">
+                    <td colSpan={3} className="p-2 text-right text-xs font-semibold text-muted-foreground">Totale</td>
+                    <td className="p-2 font-mono text-sm font-bold text-primary">€{poTotal.toFixed(2)}</td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+
+            {/* Notes */}
+            <div><Label>Note</Label><Textarea value={poNotes} onChange={e => setPoNotes(e.target.value)} rows={2} /></div>
+
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setPoDialogOpen(false)}>Annulla</Button>
+              <Button onClick={() => createPoMut.mutate()} disabled={!poSupplierId || createPoMut.isPending}>
+                Crea Ordine d'Acquisto
+              </Button>
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
     </div>
