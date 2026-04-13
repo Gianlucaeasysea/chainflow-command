@@ -206,7 +206,14 @@ export default function BomPage() {
                   <div className="text-sm font-medium text-foreground truncate">{getItemCode(bom.item_id)}</div>
                   <div className="text-xs text-muted-foreground">v{bom.version}</div>
                 </div>
-                <Badge className={cn("text-xs shrink-0", statusColors[bom.status])}>{bom.status}</Badge>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  {bom.status === "active" && isCostOutdated(bom) && (
+                    <Badge variant="outline" className="text-[10px] border-orange-400 text-orange-500 gap-0.5">
+                      <AlertTriangle className="h-3 w-3" /> Costo
+                    </Badge>
+                  )}
+                  <Badge className={cn("text-xs", statusColors[bom.status])}>{bom.status}</Badge>
+                </div>
               </button>
             ))}
           </div>
