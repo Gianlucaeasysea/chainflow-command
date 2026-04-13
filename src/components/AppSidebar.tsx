@@ -1,30 +1,15 @@
 import {
-  LayoutDashboard,
-  Users,
-  Package,
-  FileText,
-  Factory,
-  Warehouse,
-  RefreshCcw,
-  DollarSign,
-  Layers,
-  Clock,
-  GanttChart,
+  LayoutDashboard, Users, Package, FileText, Factory, Warehouse,
+  RefreshCcw, DollarSign, Layers, Clock, GanttChart, LogOut,
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
-import { useLocation } from "react-router-dom";
 import {
-  Sidebar,
-  SidebarContent,
-  SidebarGroup,
-  SidebarGroupContent,
-  SidebarGroupLabel,
-  SidebarMenu,
-  SidebarMenuButton,
-  SidebarMenuItem,
-  SidebarHeader,
-  useSidebar,
+  Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent,
+  SidebarGroupLabel, SidebarMenu, SidebarMenuButton, SidebarMenuItem,
+  SidebarHeader, SidebarFooter, useSidebar,
 } from "@/components/ui/sidebar";
+import { Separator } from "@/components/ui/separator";
+import { Button } from "@/components/ui/button";
 
 const mainItems = [
   { title: "Dashboard", url: "/", icon: LayoutDashboard },
@@ -46,15 +31,7 @@ const analyticsItems = [
   { title: "Riordino", url: "/reorder", icon: RefreshCcw },
 ];
 
-function SidebarSection({
-  label,
-  items,
-  collapsed,
-}: {
-  label: string;
-  items: typeof mainItems;
-  collapsed: boolean;
-}) {
+function SidebarSection({ label, items, collapsed }: { label: string; items: typeof mainItems; collapsed: boolean }) {
   return (
     <SidebarGroup>
       {!collapsed && (
@@ -67,12 +44,7 @@ function SidebarSection({
           {items.map((item) => (
             <SidebarMenuItem key={item.title}>
               <SidebarMenuButton asChild>
-                <NavLink
-                  to={item.url}
-                  end={item.url === "/"}
-                  className="hover:bg-sidebar-accent/50 transition-colors"
-                  activeClassName="bg-sidebar-accent text-primary font-medium"
-                >
+                <NavLink to={item.url} end={item.url === "/"} className="hover:bg-sidebar-accent/50 transition-colors" activeClassName="bg-sidebar-accent text-primary font-medium">
                   <item.icon className="mr-2 h-4 w-4 shrink-0" />
                   {!collapsed && <span>{item.title}</span>}
                 </NavLink>
@@ -85,9 +57,10 @@ function SidebarSection({
   );
 }
 
-export function AppSidebar() {
+export function AppSidebar({ email, onLogout }: { email: string; onLogout: () => void }) {
   const { state } = useSidebar();
   const collapsed = state === "collapsed";
+  const initial = email.charAt(0).toUpperCase();
 
   return (
     <Sidebar collapsible="icon" className="border-r border-border">
@@ -99,9 +72,7 @@ export function AppSidebar() {
           {!collapsed && (
             <div>
               <h1 className="text-foreground font-semibold text-sm tracking-tight">ChainFlow</h1>
-              <p className="text-muted-foreground text-[10px] font-mono uppercase tracking-wider">
-                SCM Platform
-              </p>
+              <p className="text-muted-foreground text-[10px] font-mono uppercase tracking-wider">SCM Platform</p>
             </div>
           )}
         </div>
@@ -111,6 +82,20 @@ export function AppSidebar() {
         <SidebarSection label="Operazioni" items={operationsItems} collapsed={collapsed} />
         <SidebarSection label="Analytics" items={analyticsItems} collapsed={collapsed} />
       </SidebarContent>
+      <SidebarFooter className="p-3">
+        <Separator className="mb-3" />
+        <div className="flex items-center gap-2">
+          <div className="h-7 w-7 rounded-full bg-muted flex items-center justify-center shrink-0">
+            <span className="text-xs font-semibold text-muted-foreground">{initial}</span>
+          </div>
+          {!collapsed && (
+            <span className="text-xs text-muted-foreground truncate flex-1">{email}</span>
+          )}
+          <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" onClick={onLogout} title="Esci">
+            <LogOut className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+      </SidebarFooter>
     </Sidebar>
   );
 }
