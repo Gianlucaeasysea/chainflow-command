@@ -297,11 +297,55 @@ export default function PurchaseOrdersPage() {
           notes: `Da ${getStatusInfo(oldStatus).label} → ${getStatusInfo(newStatus).label}`,
         }).then(({ error }) => { if (error) console.warn("History log error:", error.message); }),
       ]);
+
+      // Auto-receive: create lots + stock movements when delivered
+      if (newStatus === "delivered") {
+        const { data: lines } = await supabase.from("po_lines").select("*").eq("purchase_order_id", orderId);
+        if (lines && lines.length > 0) {
+          const year = new Date().getFullYear();
+          const { count } = await supabase.from("inventory_lots").select("id", { count: "exact", head: true }).like("lot_number", `LOT-${year}-%`);
+          let seq = (count || 0) + 1;
+
+          for (const line of lines) {
+            const lotNumber = `LOT-${year}-${String(seq).padStart(4, "0")}`;
+            seq++;
+
+            const { data: lot, error: lotErr } = await supabase.from("inventory_lots").insert({
+              item_id: line.item_id,
+              lot_number: lotNumber,
+              quantity_on_hand: line.quantity,
+              status: "quarantine",
+              purchase_order_id: orderId,
+            }).select("id").single();
+            if (lotErr) { console.warn("Lot creation error:", lotErr.message); continue; }
+
+            await supabase.from("stock_movements").insert({
+              item_id: line.item_id,
+              movement_type: "po_inbound",
+              quantity: line.quantity,
+              lot_number: lotNumber,
+              reference_id: orderId,
+              reference_type: "purchase_order",
+              notes: `Ricevuto da PO: ${currentOrder?.po_number || orderId}`,
+            });
+          }
+          return { lotsCreated: lines.length };
+        }
+      }
+      return { lotsCreated: 0 };
     },
-    onSuccess: () => {
+    onSuccess: (_data) => {
       qc.invalidateQueries({ queryKey: ["purchase_orders"] });
       qc.invalidateQueries({ queryKey: ["po_status_history", detailId] });
-      toast.success("Stato aggiornato");
+      qc.invalidateQueries({ queryKey: ["inventory_lots"] });
+      qc.invalidateQueries({ queryKey: ["stock_movements"] });
+      if (_data?.lotsCreated && _data.lotsCreated > 0) {
+        toast.success(`Merce ricevuta — creati ${_data.lotsCreated} lotti in quarantena`, {
+          action: { label: "Vai ai Lotti", onClick: () => window.location.href = "/lots" },
+        });
+      } else {
+        toast.success("Stato aggiornato");
+      }
     },
   });
 
