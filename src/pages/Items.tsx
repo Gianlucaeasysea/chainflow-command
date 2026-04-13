@@ -1,7 +1,9 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { Plus, Search, MoreHorizontal, Pencil, Trash2, Upload, Eye } from "lucide-react";
+import { Plus, Search, MoreHorizontal, Pencil, Trash2, Upload, Eye, Package } from "lucide-react";
+import TableSkeleton from "@/components/TableSkeleton";
+import EmptyState from "@/components/EmptyState";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -172,9 +174,9 @@ export default function ItemsPage() {
             </thead>
             <tbody className="divide-y divide-border">
               {isLoading ? (
-                <tr><td colSpan={8} className="p-8 text-center text-muted-foreground">Caricamento...</td></tr>
-              ) : filtered.length === 0 ? (
-                <tr><td colSpan={8} className="p-8 text-center text-muted-foreground">{search || catFilter !== "all" ? "Nessun risultato" : "Nessun articolo — crea il primo"}</td></tr>
+                <tr><td colSpan={8}><TableSkeleton rows={5} columns={6} /></td></tr>
+              ) : filtered.length === 0 && !search && catFilter === "all" ? (
+                <tr><td colSpan={8}><EmptyState icon={Package} message="Nessun articolo. Crea il catalogo prodotti." actionLabel="Nuovo Articolo" onAction={() => { setEditItem(null); setForm(emptyItem); setDialogOpen(true); }} /></td></tr>
               ) : filtered.map((item: any) => (
                 <tr key={item.id} className="hover:bg-muted/20 transition-colors cursor-pointer" onClick={() => setDetailItemId(item.id)}>
                   <td className="p-3 font-mono text-primary font-medium">{item.item_code}</td>

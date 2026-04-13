@@ -1,7 +1,9 @@
 import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { Plus, Search, AlertTriangle } from "lucide-react";
+import { Plus, Search, AlertTriangle, Zap } from "lucide-react";
+import TableSkeleton from "@/components/TableSkeleton";
+import EmptyState from "@/components/EmptyState";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -287,9 +289,9 @@ export default function ProductionOrdersPage() {
             </thead>
             <tbody className="divide-y divide-border">
               {isLoading ? (
-                <tr><td colSpan={8} className="p-8 text-center text-muted-foreground">Caricamento...</td></tr>
+                <tr><td colSpan={8}><TableSkeleton rows={5} columns={6} /></td></tr>
               ) : filtered.length === 0 ? (
-                <tr><td colSpan={8} className="p-8 text-center text-muted-foreground">Nessun ordine di produzione</td></tr>
+                <tr><td colSpan={8}><EmptyState icon={Zap} message="Nessun ordine di produzione attivo." actionLabel="Nuovo ODP" onAction={() => setCreateOpen(true)} /></td></tr>
               ) : filtered.map(o => {
                 const si = getStatusInfo(o.status);
                 const pi = getPriorityInfo(o.priority || "normal");
