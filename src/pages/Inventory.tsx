@@ -17,6 +17,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import ExportButton from "@/components/ExportButton";
 
 const MOVEMENT_TYPES = [
   { value: "po_inbound", label: "Carico da PO", sign: "+", direction: "in" },
@@ -163,9 +164,20 @@ export default function InventoryPage() {
             {items.length} articoli — Stock totale: {formatEur(stockLevels.reduce((s, i) => s + i.value, 0))}
           </p>
         </div>
-        <Button onClick={() => setCreateOpen(true)} className="gap-2">
-          <Plus className="h-4 w-4" /> Nuovo Movimento
-        </Button>
+        <div className="flex gap-2">
+          <ExportButton filename="movimenti_magazzino" columns={[
+            { key: "created_at", label: "Data" }, { key: "item_code", label: "Codice Articolo" },
+            { key: "item_desc", label: "Descrizione" }, { key: "movement_type", label: "Tipo Movimento" },
+            { key: "quantity", label: "Quantità" }, { key: "lot_number", label: "Lotto" },
+            { key: "notes", label: "Note" },
+          ]} data={movements.map(m => {
+            const item = items.find(i => i.id === m.item_id);
+            return { ...m, item_code: item?.item_code || "", item_desc: item?.description || "" };
+          }) as any} />
+          <Button onClick={() => setCreateOpen(true)} className="gap-2">
+            <Plus className="h-4 w-4" /> Nuovo Movimento
+          </Button>
+        </div>
       </div>
 
       <Tabs defaultValue="stock">

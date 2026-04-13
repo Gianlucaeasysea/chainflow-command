@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/select";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import ExportButton from "@/components/ExportButton";
 
 const MGMT_TYPES = [
   { value: "reorder_point", label: "Punto di Riordino" },
@@ -270,6 +271,15 @@ export default function ReorderPage() {
             {suggestions.length} articoli sotto punto di riordino
           </p>
         </div>
+        <ExportButton filename="parametri_riordino" columns={[
+          { key: "item_code", label: "Codice" }, { key: "description", label: "Descrizione" },
+          { key: "stock", label: "Stock Attuale" }, { key: "rop", label: "ROP" },
+          { key: "safetyStock", label: "Safety Stock" }, { key: "eoq", label: "EOQ" },
+          { key: "maxStock", label: "Stock Max" }, { key: "mgmt", label: "Tipo Gestione" },
+          { key: "status", label: "Stato" },
+        ]} data={itemsWithStatus.map(i => ({
+          ...i, mgmt: MGMT_TYPES.find(t => t.value === i.params?.management_type)?.label || "",
+        })) as any} />
       </div>
 
       {/* Suggestions */}

@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/select";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import ExportButton from "@/components/ExportButton";
 
 const LOT_STATUSES = [
   { value: "quarantine", label: "Quarantena", color: "status-warning" },
@@ -94,7 +95,18 @@ export default function LotsPage() {
           <h1 className="text-xl font-semibold text-foreground">Gestione Lotti</h1>
           <p className="text-sm text-muted-foreground">{lots.length} lotti tracciati</p>
         </div>
-        <Button onClick={() => setCreateOpen(true)} className="gap-2"><Plus className="h-4 w-4" /> Nuovo Lotto</Button>
+        <div className="flex gap-2">
+          <ExportButton filename="lotti" columns={[
+            { key: "lot_number", label: "Numero Lotto" }, { key: "item_code", label: "Codice Articolo" },
+            { key: "item_desc", label: "Descrizione" }, { key: "quantity_on_hand", label: "Qtà Disponibile" },
+            { key: "status", label: "Stato" }, { key: "production_date", label: "Data Produzione" },
+            { key: "expiry_date", label: "Data Scadenza" },
+          ]} data={lots.map(l => {
+            const item = items.find(i => i.id === l.item_id);
+            return { ...l, item_code: item?.item_code || "", item_desc: item?.description || "" };
+          }) as any} />
+          <Button onClick={() => setCreateOpen(true)} className="gap-2"><Plus className="h-4 w-4" /> Nuovo Lotto</Button>
+        </div>
       </div>
 
       <div className="flex gap-3">

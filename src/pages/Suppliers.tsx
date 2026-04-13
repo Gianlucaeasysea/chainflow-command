@@ -24,6 +24,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import CsvImportDialog from "@/components/CsvImportDialog";
+import ExportButton from "@/components/ExportButton";
 
 type Supplier = {
   id: string; company_name: string; vat_number: string | null; country: string | null;
@@ -197,6 +198,13 @@ export default function SuppliersPage() {
           <p className="text-sm text-muted-foreground">{suppliers.length} fornitori registrati</p>
         </div>
         <div className="flex gap-2">
+          <ExportButton filename="fornitori" columns={[
+            { key: "company_name", label: "Ragione Sociale" }, { key: "vat_number", label: "P.IVA" },
+            { key: "country", label: "Paese" }, { key: "contact_name", label: "Contatto" },
+            { key: "contact_email", label: "Email" }, { key: "contact_phone", label: "Telefono" },
+            { key: "payment_terms", label: "Termini Pagamento" }, { key: "incoterm", label: "Incoterm" },
+            { key: "rating", label: "Rating" },
+          ]} data={suppliers as any} />
           <Button variant="outline" onClick={() => setCsvOpen(true)} className="gap-2"><Upload className="h-4 w-4" /> Importa CSV</Button>
           <Button onClick={openNew} className="gap-2"><Plus className="h-4 w-4" /> Nuovo Fornitore</Button>
         </div>

@@ -23,6 +23,7 @@ import {
 import { toast } from "sonner";
 import CsvImportDialog from "@/components/CsvImportDialog";
 import ItemDetailDialog from "@/components/ItemDetailDialog";
+import ExportButton from "@/components/ExportButton";
 
 const CATEGORIES = ["Materia Prima", "Componente", "Semilavorato", "Prodotto Finito", "Imballaggio", "Consumabile"];
 const UOM_OPTIONS = ["PZ", "KG", "M", "L", "M2", "M3", "SET", "ROL"];
@@ -132,6 +133,12 @@ export default function ItemsPage() {
           <p className="text-sm text-muted-foreground">{items.length} articoli registrati</p>
         </div>
         <div className="flex gap-2">
+          <ExportButton filename="articoli" columns={[
+            { key: "item_code", label: "Codice" }, { key: "description", label: "Descrizione" },
+            { key: "category", label: "Categoria" }, { key: "unit_of_measure", label: "UdM" },
+            { key: "item_type", label: "Tipo" }, { key: "unit_cost", label: "Costo Unitario" },
+            { key: "assembly_cost", label: "Costo Assemblaggio" }, { key: "notes", label: "Note" },
+          ]} data={items as any} />
           <Button variant="outline" onClick={() => setCsvOpen(true)} className="gap-2"><Upload className="h-4 w-4" /> Importa CSV</Button>
           <Button onClick={() => { setEditItem(null); setForm(emptyItem); setDialogOpen(true); }} className="gap-2">
             <Plus className="h-4 w-4" /> Nuovo Articolo

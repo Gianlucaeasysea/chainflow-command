@@ -15,6 +15,7 @@ import {
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import ExportButton from "@/components/ExportButton";
 
 export default function CostsPage() {
   const [search, setSearch] = useState("");
@@ -79,7 +80,17 @@ export default function CostsPage() {
           <h1 className="text-xl font-semibold text-foreground">Gestione Costi</h1>
           <p className="text-sm text-muted-foreground">Storico e analisi costi articoli</p>
         </div>
-        <Button onClick={() => setCreateOpen(true)} className="gap-2"><Plus className="h-4 w-4" /> Registra Costo</Button>
+        <div className="flex gap-2">
+          <ExportButton filename="storico_costi" columns={[
+            { key: "item_code", label: "Codice" }, { key: "item_desc", label: "Descrizione" },
+            { key: "cost_type", label: "Tipo Costo" }, { key: "amount", label: "Costo Unitario" },
+            { key: "effective_date", label: "Data Validità" }, { key: "source", label: "Note" },
+          ]} data={costHistory.map(c => {
+            const item = items.find(i => i.id === c.item_id);
+            return { ...c, item_code: item?.item_code || "", item_desc: item?.description || "" };
+          }) as any} />
+          <Button onClick={() => setCreateOpen(true)} className="gap-2"><Plus className="h-4 w-4" /> Registra Costo</Button>
+        </div>
       </div>
 
       <div className="relative max-w-sm">
