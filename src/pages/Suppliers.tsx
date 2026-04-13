@@ -205,6 +205,7 @@ export default function SuppliersPage() {
           </table>
         </div>
       </div>
+      )}
 
       {/* Supplier Detail Dialog */}
       <SupplierDetailDialog supplier={selectedSupplier} open={!!detailId} onOpenChange={open => { if (!open) setDetailId(null); }} />
