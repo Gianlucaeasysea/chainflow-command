@@ -17,6 +17,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import ExportButton from "@/components/ExportButton";
 
 const MOVEMENT_TYPES = [
   { value: "po_inbound", label: "Carico da PO", sign: "+", direction: "in" },

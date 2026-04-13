@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/select";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import ExportButton from "@/components/ExportButton";
 
 const LOT_STATUSES = [
   { value: "quarantine", label: "Quarantena", color: "status-warning" },

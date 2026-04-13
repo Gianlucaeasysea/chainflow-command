@@ -15,6 +15,7 @@ import {
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import ExportButton from "@/components/ExportButton";
 
 export default function CostsPage() {
   const [search, setSearch] = useState("");

@@ -23,6 +23,7 @@ import {
 import { toast } from "sonner";
 import CsvImportDialog from "@/components/CsvImportDialog";
 import ItemDetailDialog from "@/components/ItemDetailDialog";
+import ExportButton from "@/components/ExportButton";
 
 const CATEGORIES = ["Materia Prima", "Componente", "Semilavorato", "Prodotto Finito", "Imballaggio", "Consumabile"];
 const UOM_OPTIONS = ["PZ", "KG", "M", "L", "M2", "M3", "SET", "ROL"];

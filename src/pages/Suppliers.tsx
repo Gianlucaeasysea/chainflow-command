@@ -24,6 +24,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import CsvImportDialog from "@/components/CsvImportDialog";
+import ExportButton from "@/components/ExportButton";
 
 type Supplier = {
   id: string; company_name: string; vat_number: string | null; country: string | null;
