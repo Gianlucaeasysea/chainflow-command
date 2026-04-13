@@ -484,6 +484,11 @@ export default function PurchaseOrdersPage() {
           <p className="text-sm text-muted-foreground">{orders.length} ordini</p>
         </div>
         <div className="flex gap-2">
+          <ExportButton filename="ordini_acquisto" columns={[
+            { key: "po_number", label: "Numero ODA" }, { key: "supplier_name", label: "Fornitore" },
+            { key: "order_date", label: "Data Ordine" }, { key: "status", label: "Status" },
+            { key: "total_amount", label: "Valore Totale" },
+          ]} data={orders.map(o => ({ ...o, supplier_name: suppliers.find((s: any) => s.id === o.supplier_id)?.company_name || "" })) as any} />
           <Button variant="outline" onClick={() => setCsvOpen(true)} className="gap-2"><Upload className="h-4 w-4" /> Importa</Button>
           <Button onClick={() => setCreateOpen(true)} className="gap-2"><Plus className="h-4 w-4" /> Nuovo PO</Button>
         </div>
