@@ -136,7 +136,7 @@ export default function ItemsPage() {
         </div>
         <div className="flex gap-2">
           <ExportButton filename="articoli" columns={[
-            { key: "item_code", label: "Codice" }, { key: "description", label: "Descrizione" },
+            { key: "item_code", label: "Codice" }, { key: "ean", label: "EAN" }, { key: "description", label: "Descrizione" },
             { key: "category", label: "Categoria" }, { key: "unit_of_measure", label: "UdM" },
             { key: "item_type", label: "Tipo" }, { key: "unit_cost", label: "Costo Unitario" },
             { key: "assembly_cost", label: "Costo Assemblaggio" }, { key: "notes", label: "Note" },
@@ -167,7 +167,7 @@ export default function ItemsPage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border bg-muted/30">
-                {["Codice", "Descrizione", "Tipo", "UdM", "Costo Unit.", "Costo Ass.", "Categoria", ""].map(h => (
+                {["Codice", "EAN", "Descrizione", "Tipo", "UdM", "Costo Unit.", "Costo Ass.", "Categoria", ""].map(h => (
                   <th key={h} className="text-left p-3 text-muted-foreground text-xs uppercase tracking-wider font-mono font-medium">{h}</th>
                 ))}
               </tr>
@@ -180,6 +180,7 @@ export default function ItemsPage() {
               ) : filtered.map((item: any) => (
                 <tr key={item.id} className="hover:bg-muted/20 transition-colors cursor-pointer" onClick={() => setDetailItemId(item.id)}>
                   <td className="p-3 font-mono text-primary font-medium">{item.item_code}</td>
+                  <td className="p-3 font-mono text-xs text-muted-foreground">{item.ean || "—"}</td>
                   <td className="p-3 text-foreground">{item.description}</td>
                   <td className="p-3"><Badge variant="outline" className="text-[10px] font-mono">{ITEM_TYPES.find(t => t.value === (item.item_type || "component"))?.label || item.item_type}</Badge></td>
                   <td className="p-3"><Badge variant="outline" className="font-mono text-xs">{item.unit_of_measure}</Badge></td>
