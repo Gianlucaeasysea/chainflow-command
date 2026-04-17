@@ -66,6 +66,25 @@ export default function ProductionOrdersPage() {
     enabled: !!detailOrderId,
   });
 
+  const selectedWo = useMemo(() => undefined as any, []); // placeholder, replaced below
+
+  const { data: detailBomLines = [] } = useQuery({
+    queryKey: ["bom_lines_detail", detailOrderId],
+    queryFn: async () => {
+      if (!detailOrderId) return [];
+      const order = (await supabase.from("production_orders").select("bom_header_id").eq("id", detailOrderId).maybeSingle()).data;
+      if (!order?.bom_header_id) return [];
+      const { data, error } = await supabase
+        .from("bom_lines")
+        .select("*")
+        .eq("bom_header_id", order.bom_header_id)
+        .order("sort_order");
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!detailOrderId,
+  });
+
   const { data: items = [] } = useQuery({
     queryKey: ["items"],
     queryFn: async () => { const { data, error } = await supabase.from("items").select("*").order("item_code"); if (error) throw error; return data; },
