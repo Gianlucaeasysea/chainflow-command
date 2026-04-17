@@ -15,6 +15,7 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { WO_STATUS_LABELS } from "@/lib/constants";
@@ -59,6 +60,25 @@ export default function ProductionOrdersPage() {
         .select("*")
         .eq("production_order_id", detailOrderId)
         .order("created_at", { ascending: true });
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!detailOrderId,
+  });
+
+  
+
+  const { data: detailBomLines = [] } = useQuery({
+    queryKey: ["bom_lines_detail", detailOrderId],
+    queryFn: async () => {
+      if (!detailOrderId) return [];
+      const order = (await supabase.from("production_orders").select("bom_header_id").eq("id", detailOrderId).maybeSingle()).data;
+      if (!order?.bom_header_id) return [];
+      const { data, error } = await supabase
+        .from("bom_lines")
+        .select("*")
+        .eq("bom_header_id", order.bom_header_id)
+        .order("sort_order");
       if (error) throw error;
       return data;
     },
@@ -336,7 +356,7 @@ export default function ProductionOrdersPage() {
                 const currentIdx = WO_STATUSES.findIndex(s => s.value === o.status);
                 const nextStatus = currentIdx < WO_STATUSES.length - 1 ? WO_STATUSES[currentIdx + 1] : null;
                 return (
-                  <tr key={o.id} className="hover:bg-muted/20 transition-colors">
+                  <tr key={o.id} className="hover:bg-muted/20 transition-colors cursor-pointer" onClick={() => setDetailOrderId(o.id)}>
                     <td className="p-3 font-mono text-primary font-medium">{o.wo_number}</td>
                     <td className="p-3 font-mono text-xs">{getItemCode(o.product_item_id)}</td>
                     <td className="p-3 font-mono">{Number(o.quantity_to_produce)}</td>
@@ -344,10 +364,10 @@ export default function ProductionOrdersPage() {
                     <td className="p-3"><Badge className={cn("text-xs", si.color)}>{si.label}</Badge></td>
                     <td className="p-3 font-mono text-xs text-muted-foreground">{o.planned_start || "—"}</td>
                     <td className="p-3 font-mono text-xs text-muted-foreground">{o.planned_end || "—"}</td>
-                    <td className="p-3">
+                    <td className="p-3" onClick={(e) => e.stopPropagation()}>
                       <div className="flex items-center gap-1">
                         <Button size="icon" variant="ghost" className="h-7 w-7"
-                          title="Storico stato"
+                          title="Dettaglio"
                           onClick={() => setDetailOrderId(o.id)}>
                           <Eye className="h-3.5 w-3.5 text-muted-foreground" />
                         </Button>
@@ -368,13 +388,14 @@ export default function ProductionOrdersPage() {
         </div>
       </div>
 
-      {/* Detail Dialog with status history */}
+      {/* Detail Dialog with tabs */}
       <Dialog open={!!detailOrderId} onOpenChange={(open) => { if (!open) setDetailOrderId(null); }}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-w-4xl w-[85vw] max-h-[90vh] flex flex-col">
           {(() => {
             const order = orders.find(o => o.id === detailOrderId);
             if (!order) return null;
             const si = getStatusInfo(order.status);
+            const pi = getPriorityInfo(order.priority || "normal");
             const woStatusColorMap: Record<string, string> = {
               planned: "bg-muted-foreground",
               materials_allocated: "bg-blue-500",
@@ -383,60 +404,180 @@ export default function ProductionOrdersPage() {
               completed: "bg-green-500",
               closed: "bg-green-700",
             };
+            const currentIdx = WO_STATUSES.findIndex(st => st.value === order.status);
             return (
               <>
                 <DialogHeader>
                   <DialogTitle className="flex items-center gap-3">
                     <span className="font-mono text-primary">{order.wo_number}</span>
                     <Badge className={cn("text-xs", si.color)}>{si.label}</Badge>
+                    <span className={cn("text-xs font-medium ml-1", pi.color)}>{pi.label}</span>
                   </DialogTitle>
                 </DialogHeader>
-                <div className="space-y-4">
-                  <div className="grid grid-cols-3 gap-3 text-xs">
-                    <div className="bg-muted/30 rounded-lg p-3">
-                      <span className="text-muted-foreground block font-mono uppercase tracking-wider mb-1">Prodotto</span>
-                      <span className="font-mono text-foreground">{getItemCode(order.product_item_id)}</span>
-                    </div>
-                    <div className="bg-muted/30 rounded-lg p-3">
-                      <span className="text-muted-foreground block font-mono uppercase tracking-wider mb-1">Quantità</span>
-                      <span className="font-mono text-foreground">{Number(order.quantity_to_produce)}</span>
-                    </div>
-                    <div className="bg-muted/30 rounded-lg p-3">
-                      <span className="text-muted-foreground block font-mono uppercase tracking-wider mb-1">Periodo Pianif.</span>
-                      <span className="font-mono text-foreground text-[11px]">{order.planned_start || "—"} → {order.planned_end || "—"}</span>
-                    </div>
-                  </div>
 
-                  <div className="bg-muted/30 rounded-lg p-4">
-                    <h3 className="text-xs font-mono uppercase tracking-wider text-muted-foreground mb-3 flex items-center gap-1.5">
-                      <History className="h-3.5 w-3.5" /> Storico Stato
-                    </h3>
-                    {woHistory.length === 0 ? (
-                      <p className="text-xs text-muted-foreground py-2">Nessun cambio di stato registrato.</p>
-                    ) : (
-                      <div className="relative pl-4 space-y-3 border-l-2 border-border ml-1">
-                        {woHistory.map((h: any) => {
-                          const dotColor = woStatusColorMap[h.status] || "bg-muted-foreground";
-                          const stepInfo = WO_STATUSES.find(s => s.value === h.status);
-                          return (
-                            <div key={h.id} className="relative flex items-start gap-3">
-                              <div className={cn("absolute -left-[21px] top-1 w-3 h-3 rounded-full border-2 border-background", dotColor)} />
-                              <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-2 flex-wrap">
-                                  <Badge className={cn("text-[10px]", stepInfo?.color || "")}>{stepInfo?.label || h.status}</Badge>
-                                  <span className="font-mono text-[10px] text-muted-foreground">
-                                    {new Date(h.created_at).toLocaleString("it-IT", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })}
-                                  </span>
-                                </div>
-                                {h.notes && <p className="text-xs text-muted-foreground mt-0.5">{h.notes}</p>}
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
+                {/* Info rapide */}
+                <div className="grid grid-cols-4 gap-3 text-xs">
+                  <div className="bg-muted/30 rounded-lg p-3">
+                    <span className="text-muted-foreground block font-mono uppercase tracking-wider mb-1">Prodotto</span>
+                    <span className="font-mono text-foreground">{getItemCode(order.product_item_id)}</span>
+                  </div>
+                  <div className="bg-muted/30 rounded-lg p-3">
+                    <span className="text-muted-foreground block font-mono uppercase tracking-wider mb-1">Quantità</span>
+                    <span className="font-mono text-foreground">{Number(order.quantity_to_produce)}</span>
+                  </div>
+                  <div className="bg-muted/30 rounded-lg p-3">
+                    <span className="text-muted-foreground block font-mono uppercase tracking-wider mb-1">Inizio Piano</span>
+                    <span className="font-mono text-foreground">{order.planned_start || "—"}</span>
+                  </div>
+                  <div className="bg-muted/30 rounded-lg p-3">
+                    <span className="text-muted-foreground block font-mono uppercase tracking-wider mb-1">Fine Piano</span>
+                    <span className="font-mono text-foreground">{order.planned_end || "—"}</span>
                   </div>
                 </div>
+
+                <Tabs defaultValue="stato" className="flex-1 overflow-hidden flex flex-col mt-2">
+                  <TabsList className="grid grid-cols-4 w-full">
+                    <TabsTrigger value="stato">Stato</TabsTrigger>
+                    <TabsTrigger value="componenti">
+                      Componenti
+                      {detailBomLines.length > 0 && (
+                        <span className="ml-1 bg-primary/20 text-primary text-[10px] px-1.5 rounded-full">{detailBomLines.length}</span>
+                      )}
+                    </TabsTrigger>
+                    <TabsTrigger value="storico">
+                      Storico
+                      {woHistory.length > 0 && (
+                        <span className="ml-1 bg-primary/20 text-primary text-[10px] px-1.5 rounded-full">{woHistory.length}</span>
+                      )}
+                    </TabsTrigger>
+                    <TabsTrigger value="note">Note</TabsTrigger>
+                  </TabsList>
+
+                  <div className="flex-1 overflow-y-auto mt-4">
+
+                    {/* TAB 1: STATO */}
+                    <TabsContent value="stato" className="mt-0 space-y-4">
+                      <div className="bg-muted/30 rounded-lg p-4">
+                        <h3 className="text-xs font-mono uppercase tracking-wider text-muted-foreground mb-3">Avanzamento</h3>
+                        <div className="flex items-center gap-1 flex-wrap">
+                          {WO_STATUSES.map((s, i, arr) => {
+                            const isCurrent = order.status === s.value;
+                            const isPast = i < currentIdx;
+                            return (
+                              <div key={s.value} className="flex items-center gap-1">
+                                <button
+                                  onClick={() => !isCurrent && updateStatusMut.mutate({ id: order.id, status: s.value })}
+                                  disabled={updateStatusMut.isPending || isCurrent}
+                                  className={cn(
+                                    "px-3 py-1.5 rounded text-xs font-mono whitespace-nowrap transition-colors",
+                                    isCurrent && "bg-primary text-primary-foreground",
+                                    isPast && !isCurrent && "bg-muted text-foreground/60",
+                                    !isPast && !isCurrent && "bg-muted/20 text-muted-foreground hover:bg-muted/50 cursor-pointer"
+                                  )}
+                                >{s.label}</button>
+                                {i < arr.length - 1 && <span className="text-muted-foreground/30">→</span>}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="bg-muted/30 rounded-lg p-3 text-xs">
+                          <span className="text-muted-foreground block font-mono uppercase tracking-wider mb-1">Inizio Effettivo</span>
+                          <span className="font-mono text-foreground">{order.actual_start || "Non iniziato"}</span>
+                        </div>
+                        <div className="bg-muted/30 rounded-lg p-3 text-xs">
+                          <span className="text-muted-foreground block font-mono uppercase tracking-wider mb-1">Fine Effettiva</span>
+                          <span className="font-mono text-foreground">{order.actual_end || "Non completato"}</span>
+                        </div>
+                      </div>
+                    </TabsContent>
+
+                    {/* TAB 2: COMPONENTI BOM */}
+                    <TabsContent value="componenti" className="mt-0">
+                      {!order.bom_header_id ? (
+                        <p className="text-xs text-muted-foreground py-4 text-center">Nessuna BOM collegata a questo ODP.</p>
+                      ) : detailBomLines.length === 0 ? (
+                        <p className="text-xs text-muted-foreground py-4 text-center">BOM vuota.</p>
+                      ) : (
+                        <>
+                          <p className="text-xs text-muted-foreground mb-3">
+                            Componenti necessari per produrre <span className="font-mono text-foreground">{Number(order.quantity_to_produce)}</span> unità
+                          </p>
+                          <div className="border border-border rounded-lg overflow-hidden">
+                            <table className="w-full text-sm">
+                              <thead>
+                                <tr className="border-b border-border bg-muted/30">
+                                  {["Codice", "Descrizione", "Qtà/Unità", "Scarto %", "Qtà Totale", "UM"].map(h => (
+                                    <th key={h} className="text-left p-2 text-muted-foreground text-xs font-mono uppercase tracking-wider">{h}</th>
+                                  ))}
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-border">
+                                {detailBomLines.map((bl: any) => {
+                                  const comp = items.find(i => i.id === bl.component_item_id);
+                                  const totalQty = Number(bl.quantity) * Number(order.quantity_to_produce) * (1 + Number(bl.waste_pct || 0) / 100);
+                                  return (
+                                    <tr key={bl.id} className="hover:bg-muted/10">
+                                      <td className="p-2 font-mono text-xs text-primary">{comp?.item_code || "?"}</td>
+                                      <td className="p-2 text-xs text-muted-foreground">{comp?.description || ""}</td>
+                                      <td className="p-2 text-right font-mono text-xs">{Number(bl.quantity)}</td>
+                                      <td className="p-2 text-right font-mono text-xs text-muted-foreground">{Number(bl.waste_pct || 0)}%</td>
+                                      <td className="p-2 text-right font-mono text-xs font-medium text-foreground">{totalQty.toFixed(2)}</td>
+                                      <td className="p-2 font-mono text-xs text-muted-foreground">{comp?.unit_of_measure || "PZ"}</td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
+                        </>
+                      )}
+                    </TabsContent>
+
+                    {/* TAB 3: STORICO */}
+                    <TabsContent value="storico" className="mt-0">
+                      <div className="bg-muted/30 rounded-lg p-4">
+                        <h3 className="text-xs font-mono uppercase tracking-wider text-muted-foreground mb-3 flex items-center gap-1.5">
+                          <History className="h-3.5 w-3.5" /> Storico Stato
+                        </h3>
+                        {woHistory.length === 0 ? (
+                          <p className="text-xs text-muted-foreground py-2">Nessun cambio di stato registrato.</p>
+                        ) : (
+                          <div className="relative pl-4 space-y-3 border-l-2 border-border ml-1">
+                            {woHistory.map((h: any) => {
+                              const dotColor = woStatusColorMap[h.status] || "bg-muted-foreground";
+                              const stepInfo = WO_STATUSES.find(s => s.value === h.status);
+                              return (
+                                <div key={h.id} className="relative flex items-start gap-3">
+                                  <div className={cn("absolute -left-[21px] top-1 w-3 h-3 rounded-full border-2 border-background", dotColor)} />
+                                  <div className="flex-1 min-w-0">
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                      <Badge className={cn("text-[10px]", stepInfo?.color || "")}>{stepInfo?.label || h.status}</Badge>
+                                      <span className="font-mono text-[10px] text-muted-foreground">
+                                        {new Date(h.created_at).toLocaleString("it-IT", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+                                      </span>
+                                    </div>
+                                    {h.notes && <p className="text-xs text-muted-foreground mt-0.5">{h.notes}</p>}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    </TabsContent>
+
+                    {/* TAB 4: NOTE */}
+                    <TabsContent value="note" className="mt-0">
+                      <div className="bg-muted/30 rounded-lg p-4 text-sm text-muted-foreground min-h-[120px]">
+                        {order.notes || "Nessuna nota per questo ordine."}
+                      </div>
+                    </TabsContent>
+
+                  </div>
+                </Tabs>
               </>
             );
           })()}
@@ -445,7 +586,7 @@ export default function ProductionOrdersPage() {
 
       {/* Create WO Dialog */}
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="max-w-2xl w-[80vw]">
           <DialogHeader><DialogTitle>Nuovo Ordine di Produzione</DialogTitle></DialogHeader>
           <form onSubmit={(e) => { e.preventDefault(); createMut.mutate(); }} className="space-y-4">
             <div>

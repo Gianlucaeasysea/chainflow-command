@@ -645,7 +645,7 @@ export default function PurchaseOrdersPage() {
 
       {/* ========== CREATE PO - MULTI STEP ========== */}
       <Dialog open={createOpen} onOpenChange={(open) => { if (!open) resetCreateForm(); else setCreateOpen(true); }}>
-        <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
+        <DialogContent className="max-w-4xl w-[85vw] max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-3">
               Nuovo Ordine Fornitore
@@ -1166,7 +1166,7 @@ export default function PurchaseOrdersPage() {
 
       {/* ========== PO DETAIL ========== */}
       <Dialog open={!!detailId} onOpenChange={() => setDetailId(null)}>
-        <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
+        <DialogContent className="max-w-5xl w-[90vw] max-h-[90vh] flex flex-col">
           {selectedOrder && (
             <>
               <DialogHeader>
@@ -1175,7 +1175,7 @@ export default function PurchaseOrdersPage() {
                   <Badge className={cn("text-xs", getStatusInfo(selectedOrder.status).color)}>{getStatusInfo(selectedOrder.status).label}</Badge>
                   <button
                     onClick={() => { if (window.confirm(`Eliminare ${selectedOrder.po_number}? Questa operazione è irreversibile.`)) { setDetailId(null); deleteMut.mutate(selectedOrder.id); } }}
-                    className="ml-auto text-destructive/60 hover:text-destructive transition-colors"
+                    className="ml-auto mr-8 text-destructive/60 hover:text-destructive transition-colors"
                     title="Elimina ordine"
                   >
                     <Trash2 className="h-4 w-4" />
@@ -1203,211 +1203,272 @@ export default function PurchaseOrdersPage() {
                 </div>
               </div>
 
-              {/* Timeline */}
-              <div className="bg-muted/30 rounded-lg p-4">
-                <h3 className="text-xs font-mono uppercase tracking-wider text-muted-foreground mb-3">Timeline</h3>
-                <div className="flex items-center gap-1 overflow-x-auto pb-2">
-                  {PO_STATUSES.filter(s => s.value !== "cancelled").map((s, i, arr) => {
-                    const historyEntry = statusHistory.find(h => h.status === s.value);
-                    const isCurrent = selectedOrder.status === s.value;
-                    const isPast = !!historyEntry;
-                    return (
-                      <div key={s.value} className="flex items-center gap-1">
-                        <button
-                          onClick={() => { if (!isCurrent) changeStatusMut.mutate({ orderId: selectedOrder.id, newStatus: s.value }); }}
-                          className={cn(
-                            "px-2 py-1 rounded text-[10px] font-mono whitespace-nowrap transition-colors",
-                            isCurrent && "bg-primary text-primary-foreground",
-                            isPast && !isCurrent && "bg-muted text-foreground/60",
-                            !isPast && !isCurrent && "bg-muted/20 text-muted-foreground hover:bg-muted/50 cursor-pointer"
-                          )}
-                        >{s.label}</button>
-                        {i < arr.length - 1 && <span className="text-muted-foreground/30">→</span>}
+              <Tabs defaultValue="riepilogo" className="flex-1 overflow-hidden flex flex-col mt-2">
+                <TabsList className="grid grid-cols-4 w-full">
+                  <TabsTrigger value="riepilogo">Riepilogo</TabsTrigger>
+                  <TabsTrigger value="righe">
+                    Righe
+                    {poLines.length > 0 && (
+                      <span className="ml-1 bg-primary/20 text-primary text-[10px] px-1.5 rounded-full">{poLines.length}</span>
+                    )}
+                  </TabsTrigger>
+                  <TabsTrigger value="consegne">
+                    Consegne
+                    {poDeliveries.length > 0 && (
+                      <span className="ml-1 bg-primary/20 text-primary text-[10px] px-1.5 rounded-full">{poDeliveries.length}</span>
+                    )}
+                  </TabsTrigger>
+                  <TabsTrigger value="storico">Storico</TabsTrigger>
+                </TabsList>
+
+                <div className="flex-1 overflow-y-auto mt-4">
+
+                  {/* TAB 1: RIEPILOGO */}
+                  <TabsContent value="riepilogo" className="space-y-4 mt-0">
+                    <div className="bg-muted/30 rounded-lg p-4">
+                      <h3 className="text-xs font-mono uppercase tracking-wider text-muted-foreground mb-3">Avanzamento Stato</h3>
+                      <div className="flex items-center gap-1 overflow-x-auto pb-2">
+                        {PO_STATUSES.filter(s => s.value !== "cancelled").map((s, i, arr) => {
+                          const historyEntry = statusHistory.find(h => h.status === s.value);
+                          const isCurrent = selectedOrder.status === s.value;
+                          const isPast = !!historyEntry;
+                          return (
+                            <div key={s.value} className="flex items-center gap-1">
+                              <button
+                                onClick={() => { if (!isCurrent) changeStatusMut.mutate({ orderId: selectedOrder.id, newStatus: s.value }); }}
+                                className={cn(
+                                  "px-2 py-1 rounded text-[10px] font-mono whitespace-nowrap transition-colors",
+                                  isCurrent && "bg-primary text-primary-foreground",
+                                  isPast && !isCurrent && "bg-muted text-foreground/60",
+                                  !isPast && !isCurrent && "bg-muted/20 text-muted-foreground hover:bg-muted/50 cursor-pointer"
+                                )}
+                              >{s.label}</button>
+                              {i < arr.length - 1 && <span className="text-muted-foreground/30">→</span>}
+                            </div>
+                          );
+                        })}
                       </div>
-                    );
-                  })}
-                </div>
-                {statusHistory.length > 0 && (
-                  <div className="mt-4">
-                    <h4 className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground mb-2">Storico Avanzamento</h4>
-                    <div className="relative pl-4 space-y-3 border-l-2 border-border ml-1">
-                      {[...statusHistory].reverse().map((h) => {
-                        const statusColorMap: Record<string, string> = {
-                          draft: "bg-muted-foreground", sent: "bg-blue-500", confirmed: "bg-indigo-500",
-                          pre_series: "bg-purple-500", in_production: "bg-orange-500", shipping: "bg-yellow-500",
-                          customs: "bg-amber-500", delivered: "bg-green-500", closed: "bg-green-700", cancelled: "bg-red-500",
-                        };
-                        const dotColor = statusColorMap[h.status] || "bg-muted-foreground";
-                        return (
-                          <div key={h.id} className="relative flex items-start gap-3">
-                            <div className={cn("absolute -left-[21px] top-1 w-3 h-3 rounded-full border-2 border-background", dotColor)} />
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-2">
-                                <Badge className={cn("text-[10px]", getStatusInfo(h.status).color)}>{getStatusInfo(h.status).label}</Badge>
-                                <span className="font-mono text-[10px] text-muted-foreground">{new Date(h.created_at).toLocaleString("it-IT", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })}</span>
-                              </div>
-                              {h.notes && <p className="text-xs text-muted-foreground mt-0.5">{h.notes}</p>}
-                            </div>
-                          </div>
-                        );
-                      })}
                     </div>
-                  </div>
-                )}
-              </div>
 
-              {/* Consegne Programmate */}
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <h3 className="text-xs font-mono uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
-                    <Truck className="h-3.5 w-3.5" /> Consegne Programmate
-                  </h3>
-                  <Button size="sm" onClick={() => setDeliveryOpen(true)} className="gap-1 h-7 text-xs"><Plus className="h-3 w-3" /> Aggiungi</Button>
-                </div>
-                {poDeliveries.length === 0 ? (
-                  <p className="text-xs text-muted-foreground py-2">Nessuna consegna programmata — aggiungi date di consegna scadenziata.</p>
-                ) : (
-                  <div className="space-y-2">
-                    {poDeliveries.map((d: any) => {
-                      const isEditing = !!editingDeliveries[d.id];
-                      const ed = editingDeliveries[d.id];
-                      const statusColors: Record<string, string> = { scheduled: "status-info", in_transit: "status-warning", received: "status-ok", delayed: "status-critical" };
-                      const statusLabels: Record<string, string> = { scheduled: "Programmata", in_transit: "In Transito", received: "Ricevuta", delayed: "In Ritardo" };
-                      const lineItem = d.po_line_id ? poLines.find((l: any) => l.id === d.po_line_id) : null;
-                      const lineItemData = lineItem ? getItem(lineItem.item_id) : null;
-
+                    {(() => {
+                      const sup = suppliers.find(s => s.id === selectedOrder.supplier_id);
                       return (
-                        <div key={d.id} className="border border-border rounded-lg p-3 space-y-2">
-                          {isEditing ? (
-                            <>
-                              <div className="grid grid-cols-4 gap-2">
-                                <div>
-                                  <Label className="text-[10px] font-mono uppercase text-muted-foreground">Data prevista</Label>
-                                  <Input type="date" className="font-mono h-8 text-xs mt-1" value={ed.scheduled_date}
-                                    onChange={e => setEditingDeliveries(prev => ({ ...prev, [d.id]: { ...prev[d.id], scheduled_date: e.target.value } }))} />
-                                </div>
-                                <div>
-                                  <Label className="text-[10px] font-mono uppercase text-muted-foreground">Consegna effettiva</Label>
-                                  <Input type="date" className="font-mono h-8 text-xs mt-1" value={ed.actual_delivery_date}
-                                    onChange={e => setEditingDeliveries(prev => ({ ...prev, [d.id]: { ...prev[d.id], actual_delivery_date: e.target.value } }))} />
-                                </div>
-                                <div>
-                                  <Label className="text-[10px] font-mono uppercase text-muted-foreground">Quantità</Label>
-                                  <Input type="number" step="0.01" min="0" className="font-mono h-8 text-xs mt-1" value={ed.quantity}
-                                    onChange={e => setEditingDeliveries(prev => ({ ...prev, [d.id]: { ...prev[d.id], quantity: e.target.value } }))} />
-                                </div>
-                                <div>
-                                  <Label className="text-[10px] font-mono uppercase text-muted-foreground">Stato</Label>
-                                  <Select value={ed.status} onValueChange={v => setEditingDeliveries(prev => ({ ...prev, [d.id]: { ...prev[d.id], status: v } }))}>
-                                    <SelectTrigger className="h-8 text-xs mt-1"><SelectValue /></SelectTrigger>
-                                    <SelectContent>
-                                      {[["scheduled","Programmata"],["in_transit","In Transito"],["received","Ricevuta"],["delayed","In Ritardo"]].map(([val, label]) => (
-                                        <SelectItem key={val} value={val}>{label}</SelectItem>
-                                      ))}
-                                    </SelectContent>
-                                  </Select>
-                                </div>
-                              </div>
-                              <div className="grid grid-cols-2 gap-2">
-                                <div>
-                                  <Label className="text-[10px] font-mono uppercase text-muted-foreground flex items-center gap-1"><MapPin className="h-2.5 w-2.5" /> Destinazione</Label>
-                                  <Input className="h-8 text-xs mt-1" placeholder="es. Magazzino Milano..." value={ed.destination}
-                                    onChange={e => setEditingDeliveries(prev => ({ ...prev, [d.id]: { ...prev[d.id], destination: e.target.value } }))} />
-                                </div>
-                                <div>
-                                  <Label className="text-[10px] font-mono uppercase text-muted-foreground">Note</Label>
-                                  <Input className="h-8 text-xs mt-1" value={ed.notes}
-                                    onChange={e => setEditingDeliveries(prev => ({ ...prev, [d.id]: { ...prev[d.id], notes: e.target.value } }))} />
-                                </div>
-                              </div>
-                              <div className="flex justify-end gap-2">
-                                <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => setEditingDeliveries(prev => { const n = { ...prev }; delete n[d.id]; return n; })}>Annulla</Button>
-                                <Button size="sm" className="h-7 text-xs gap-1" disabled={updateDeliveryMut.isPending}
-                                  onClick={() => {
-                                    updateDeliveryMut.mutate({ id: d.id, updates: {
-                                      scheduled_date: ed.scheduled_date,
-                                      quantity: parseFloat(ed.quantity),
-                                      status: ed.status,
-                                      notes: ed.notes || null,
-                                      destination: ed.destination || null,
-                                      actual_delivery_date: ed.actual_delivery_date || null,
-                                    }});
-                                    setEditingDeliveries(prev => { const n = { ...prev }; delete n[d.id]; return n; });
-                                  }}>
-                                  <Save className="h-3 w-3" /> Salva
-                                </Button>
-                              </div>
-                            </>
-                          ) : (
-                            <div className="flex items-center gap-3 text-xs flex-wrap">
-                              <span className="font-mono text-foreground font-medium">{d.scheduled_date}</span>
-                              {d.actual_delivery_date && (
-                                <span className="font-mono text-emerald-400 flex items-center gap-1">
-                                  <Check className="h-3 w-3" /> {d.actual_delivery_date}
-                                </span>
-                              )}
-                              {lineItemData && <span className="font-mono text-primary">{lineItemData.item_code}</span>}
-                              <span className="font-mono">{Number(d.quantity)} {lineItemData?.unit_of_measure || "PZ"}</span>
-                              {d.destination && <span className="flex items-center gap-1 text-muted-foreground"><MapPin className="h-3 w-3" />{d.destination}</span>}
-                              <Badge className={cn("text-[10px]", statusColors[d.status] || "status-info")}>{statusLabels[d.status] || d.status}</Badge>
-                              {d.notes && <span className="text-muted-foreground truncate max-w-[120px]">{d.notes}</span>}
-                              <div className="ml-auto flex items-center gap-1">
-                                <button onClick={() => setEditingDeliveries(prev => ({ ...prev, [d.id]: {
-                                  scheduled_date: d.scheduled_date, quantity: String(d.quantity), status: d.status, notes: d.notes || "", destination: d.destination || "", actual_delivery_date: d.actual_delivery_date || ""
-                                }}))} className="text-muted-foreground hover:text-foreground transition-colors" title="Modifica">
-                                  <Pencil className="h-3.5 w-3.5" />
-                                </button>
-                                <button onClick={() => { if (window.confirm(`Rimuovere consegna del ${d.scheduled_date}?`)) deleteDeliveryMut.mutate(d.id); }}
-                                  className="text-destructive/50 hover:text-destructive transition-colors" title="Elimina">
-                                  <Trash2 className="h-3.5 w-3.5" />
-                                </button>
-                              </div>
-                            </div>
-                          )}
+                        <div className="bg-muted/30 rounded-lg p-4 space-y-2">
+                          <h3 className="text-xs font-mono uppercase tracking-wider text-muted-foreground mb-2">Fornitore</h3>
+                          <div className="grid grid-cols-2 gap-3 text-xs">
+                            <div><span className="text-muted-foreground">Azienda:</span> <span className="text-foreground font-medium">{sup?.company_name || "—"}</span></div>
+                            <div><span className="text-muted-foreground">Contatto:</span> <span className="text-foreground">{sup?.contact_name || "—"}</span></div>
+                            <div><span className="text-muted-foreground">Valuta:</span> <span className="font-mono text-foreground">{selectedOrder.currency || "EUR"}</span></div>
+                            <div><span className="text-muted-foreground">Incoterm:</span> <span className="font-mono text-foreground">{selectedOrder.incoterm || "—"}</span></div>
+                            {selectedOrder.shipping_port && (
+                              <div className="col-span-2"><span className="text-muted-foreground">Porto:</span> <span className="font-mono text-foreground">{selectedOrder.shipping_port}</span></div>
+                            )}
+                          </div>
                         </div>
                       );
-                    })}
-                  </div>
-                )}
-              </div>
+                    })()}
 
-              {/* Lines */}
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <h3 className="text-xs font-mono uppercase tracking-wider text-muted-foreground">Righe Ordine</h3>
-                  <Button size="sm" onClick={() => setAddLineOpen(true)} className="gap-1 h-7 text-xs"><Plus className="h-3 w-3" /> Aggiungi</Button>
-                </div>
-                <table className="w-full text-sm">
-                  <thead><tr className="border-b border-border">
-                    {["Articolo", "Descrizione", "Qtà", "Prezzo", "Sconto", "Totale"].map(h => (
-                      <th key={h} className="text-left p-2 text-muted-foreground text-xs font-mono">{h}</th>
-                    ))}
-                  </tr></thead>
-                  <tbody className="divide-y divide-border">
-                    {poLines.length === 0 ? (
-                      <tr><td colSpan={6} className="p-4 text-center text-muted-foreground text-xs">Nessuna riga</td></tr>
-                    ) : poLines.map(line => {
-                      const item = getItem(line.item_id);
-                      return (
-                        <tr key={line.id}>
-                          <td className="p-2 font-mono text-xs text-primary">{item?.item_code || "?"}</td>
-                          <td className="p-2 text-xs text-muted-foreground">{item?.description || ""}</td>
-                          <td className="p-2 text-right font-mono text-xs">{Number(line.quantity)}</td>
-                          <td className="p-2 text-right font-mono text-xs">€{Number(line.unit_price).toFixed(2)}</td>
-                          <td className="p-2 text-right font-mono text-xs text-muted-foreground">{Number(line.discount_pct)}%</td>
-                          <td className="p-2 text-right font-mono text-xs font-medium">€{Number(line.line_total || 0).toFixed(2)}</td>
-                        </tr>
-                      );
-                    })}
-                    {poLines.length > 0 && (
-                      <tr className="bg-muted/20">
-                        <td colSpan={5} className="p-2 text-right font-mono text-xs text-muted-foreground uppercase">Totale</td>
-                        <td className="p-2 text-right font-mono font-bold text-foreground">€{poLines.reduce((s, l) => s + Number(l.line_total || 0), 0).toFixed(2)}</td>
-                      </tr>
+                    {selectedOrder.notes && (
+                      <div className="bg-muted/30 rounded-lg p-4">
+                        <h3 className="text-xs font-mono uppercase tracking-wider text-muted-foreground mb-2">Note</h3>
+                        <p className="text-sm text-foreground whitespace-pre-wrap">{selectedOrder.notes}</p>
+                      </div>
                     )}
-                  </tbody>
-                </table>
-              </div>
+
+                    <div className="bg-primary/10 border border-primary/20 rounded-lg p-4 flex items-center justify-between">
+                      <span className="text-xs font-mono uppercase tracking-wider text-muted-foreground">Totale Ordine</span>
+                      <span className="font-mono text-lg font-bold text-primary">€{poLines.reduce((s, l) => s + Number(l.line_total || 0), 0).toFixed(2)}</span>
+                    </div>
+                  </TabsContent>
+
+                  {/* TAB 2: RIGHE */}
+                  <TabsContent value="righe" className="mt-0">
+                    <div className="flex items-center justify-between mb-2">
+                      <h3 className="text-xs font-mono uppercase tracking-wider text-muted-foreground">Righe Ordine</h3>
+                      <Button size="sm" onClick={() => setAddLineOpen(true)} className="gap-1 h-7 text-xs"><Plus className="h-3 w-3" /> Aggiungi</Button>
+                    </div>
+                    <table className="w-full text-sm">
+                      <thead><tr className="border-b border-border">
+                        {["Articolo", "Descrizione", "Qtà", "Prezzo", "Sconto", "Totale"].map(h => (
+                          <th key={h} className="text-left p-2 text-muted-foreground text-xs font-mono">{h}</th>
+                        ))}
+                      </tr></thead>
+                      <tbody className="divide-y divide-border">
+                        {poLines.length === 0 ? (
+                          <tr><td colSpan={6} className="p-4 text-center text-muted-foreground text-xs">Nessuna riga</td></tr>
+                        ) : poLines.map(line => {
+                          const item = getItem(line.item_id);
+                          return (
+                            <tr key={line.id}>
+                              <td className="p-2 font-mono text-xs text-primary">{item?.item_code || "?"}</td>
+                              <td className="p-2 text-xs text-muted-foreground">{item?.description || ""}</td>
+                              <td className="p-2 text-right font-mono text-xs">{Number(line.quantity)}</td>
+                              <td className="p-2 text-right font-mono text-xs">€{Number(line.unit_price).toFixed(2)}</td>
+                              <td className="p-2 text-right font-mono text-xs text-muted-foreground">{Number(line.discount_pct)}%</td>
+                              <td className="p-2 text-right font-mono text-xs font-medium">€{Number(line.line_total || 0).toFixed(2)}</td>
+                            </tr>
+                          );
+                        })}
+                        {poLines.length > 0 && (
+                          <tr className="bg-muted/20">
+                            <td colSpan={5} className="p-2 text-right font-mono text-xs text-muted-foreground uppercase">Totale</td>
+                            <td className="p-2 text-right font-mono font-bold text-foreground">€{poLines.reduce((s, l) => s + Number(l.line_total || 0), 0).toFixed(2)}</td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </TabsContent>
+
+                  {/* TAB 3: CONSEGNE */}
+                  <TabsContent value="consegne" className="mt-0 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-xs font-mono uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                        <Truck className="h-3.5 w-3.5" /> Consegne Programmate
+                      </h3>
+                      <Button size="sm" onClick={() => setDeliveryOpen(true)} className="gap-1 h-7 text-xs"><Plus className="h-3 w-3" /> Aggiungi</Button>
+                    </div>
+                    {poDeliveries.length === 0 ? (
+                      <p className="text-xs text-muted-foreground py-2">Nessuna consegna programmata — aggiungi date di consegna scadenziata.</p>
+                    ) : (
+                      <div className="space-y-2">
+                        {poDeliveries.map((d: any) => {
+                          const isEditing = !!editingDeliveries[d.id];
+                          const ed = editingDeliveries[d.id];
+                          const statusColors: Record<string, string> = { scheduled: "status-info", in_transit: "status-warning", received: "status-ok", delayed: "status-critical" };
+                          const statusLabels: Record<string, string> = { scheduled: "Programmata", in_transit: "In Transito", received: "Ricevuta", delayed: "In Ritardo" };
+                          const lineItem = d.po_line_id ? poLines.find((l: any) => l.id === d.po_line_id) : null;
+                          const lineItemData = lineItem ? getItem(lineItem.item_id) : null;
+
+                          return (
+                            <div key={d.id} className="border border-border rounded-lg p-3 space-y-2">
+                              {isEditing ? (
+                                <>
+                                  <div className="grid grid-cols-4 gap-2">
+                                    <div>
+                                      <Label className="text-[10px] font-mono uppercase text-muted-foreground">Data prevista</Label>
+                                      <Input type="date" className="font-mono h-8 text-xs mt-1" value={ed.scheduled_date}
+                                        onChange={e => setEditingDeliveries(prev => ({ ...prev, [d.id]: { ...prev[d.id], scheduled_date: e.target.value } }))} />
+                                    </div>
+                                    <div>
+                                      <Label className="text-[10px] font-mono uppercase text-muted-foreground">Consegna effettiva</Label>
+                                      <Input type="date" className="font-mono h-8 text-xs mt-1" value={ed.actual_delivery_date}
+                                        onChange={e => setEditingDeliveries(prev => ({ ...prev, [d.id]: { ...prev[d.id], actual_delivery_date: e.target.value } }))} />
+                                    </div>
+                                    <div>
+                                      <Label className="text-[10px] font-mono uppercase text-muted-foreground">Quantità</Label>
+                                      <Input type="number" step="0.01" min="0" className="font-mono h-8 text-xs mt-1" value={ed.quantity}
+                                        onChange={e => setEditingDeliveries(prev => ({ ...prev, [d.id]: { ...prev[d.id], quantity: e.target.value } }))} />
+                                    </div>
+                                    <div>
+                                      <Label className="text-[10px] font-mono uppercase text-muted-foreground">Stato</Label>
+                                      <Select value={ed.status} onValueChange={v => setEditingDeliveries(prev => ({ ...prev, [d.id]: { ...prev[d.id], status: v } }))}>
+                                        <SelectTrigger className="h-8 text-xs mt-1"><SelectValue /></SelectTrigger>
+                                        <SelectContent>
+                                          {[["scheduled","Programmata"],["in_transit","In Transito"],["received","Ricevuta"],["delayed","In Ritardo"]].map(([val, label]) => (
+                                            <SelectItem key={val} value={val}>{label}</SelectItem>
+                                          ))}
+                                        </SelectContent>
+                                      </Select>
+                                    </div>
+                                  </div>
+                                  <div className="grid grid-cols-2 gap-2">
+                                    <div>
+                                      <Label className="text-[10px] font-mono uppercase text-muted-foreground flex items-center gap-1"><MapPin className="h-2.5 w-2.5" /> Destinazione</Label>
+                                      <Input className="h-8 text-xs mt-1" placeholder="es. Magazzino Milano..." value={ed.destination}
+                                        onChange={e => setEditingDeliveries(prev => ({ ...prev, [d.id]: { ...prev[d.id], destination: e.target.value } }))} />
+                                    </div>
+                                    <div>
+                                      <Label className="text-[10px] font-mono uppercase text-muted-foreground">Note</Label>
+                                      <Input className="h-8 text-xs mt-1" value={ed.notes}
+                                        onChange={e => setEditingDeliveries(prev => ({ ...prev, [d.id]: { ...prev[d.id], notes: e.target.value } }))} />
+                                    </div>
+                                  </div>
+                                  <div className="flex justify-end gap-2">
+                                    <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => setEditingDeliveries(prev => { const n = { ...prev }; delete n[d.id]; return n; })}>Annulla</Button>
+                                    <Button size="sm" className="h-7 text-xs gap-1" disabled={updateDeliveryMut.isPending}
+                                      onClick={() => {
+                                        updateDeliveryMut.mutate({ id: d.id, updates: {
+                                          scheduled_date: ed.scheduled_date,
+                                          quantity: parseFloat(ed.quantity),
+                                          status: ed.status,
+                                          notes: ed.notes || null,
+                                          destination: ed.destination || null,
+                                          actual_delivery_date: ed.actual_delivery_date || null,
+                                        }});
+                                        setEditingDeliveries(prev => { const n = { ...prev }; delete n[d.id]; return n; });
+                                      }}>
+                                      <Save className="h-3 w-3" /> Salva
+                                    </Button>
+                                  </div>
+                                </>
+                              ) : (
+                                <div className="flex items-center gap-3 text-xs flex-wrap">
+                                  <span className="font-mono text-foreground font-medium">{d.scheduled_date}</span>
+                                  {d.actual_delivery_date && (
+                                    <span className="font-mono text-emerald-400 flex items-center gap-1">
+                                      <Check className="h-3 w-3" /> {d.actual_delivery_date}
+                                    </span>
+                                  )}
+                                  {lineItemData && <span className="font-mono text-primary">{lineItemData.item_code}</span>}
+                                  <span className="font-mono">{Number(d.quantity)} {lineItemData?.unit_of_measure || "PZ"}</span>
+                                  {d.destination && <span className="flex items-center gap-1 text-muted-foreground"><MapPin className="h-3 w-3" />{d.destination}</span>}
+                                  <Badge className={cn("text-[10px]", statusColors[d.status] || "status-info")}>{statusLabels[d.status] || d.status}</Badge>
+                                  {d.notes && <span className="text-muted-foreground truncate max-w-[120px]">{d.notes}</span>}
+                                  <div className="ml-auto flex items-center gap-1">
+                                    <button onClick={() => setEditingDeliveries(prev => ({ ...prev, [d.id]: {
+                                      scheduled_date: d.scheduled_date, quantity: String(d.quantity), status: d.status, notes: d.notes || "", destination: d.destination || "", actual_delivery_date: d.actual_delivery_date || ""
+                                    }}))} className="text-muted-foreground hover:text-foreground transition-colors" title="Modifica">
+                                      <Pencil className="h-3.5 w-3.5" />
+                                    </button>
+                                    <button onClick={() => { if (window.confirm(`Rimuovere consegna del ${d.scheduled_date}?`)) deleteDeliveryMut.mutate(d.id); }}
+                                      className="text-destructive/50 hover:text-destructive transition-colors" title="Elimina">
+                                      <Trash2 className="h-3.5 w-3.5" />
+                                    </button>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </TabsContent>
+
+                  {/* TAB 4: STORICO */}
+                  <TabsContent value="storico" className="mt-0">
+                    <div className="bg-muted/30 rounded-lg p-4">
+                      <h3 className="text-xs font-mono uppercase tracking-wider text-muted-foreground mb-3">Storico Avanzamento</h3>
+                      {statusHistory.length === 0 ? (
+                        <p className="text-xs text-muted-foreground">Nessuna variazione di stato registrata.</p>
+                      ) : (
+                        <div className="relative pl-4 space-y-3 border-l-2 border-border ml-1">
+                          {[...statusHistory].reverse().map((h) => {
+                            const statusColorMap: Record<string, string> = {
+                              draft: "bg-muted-foreground", sent: "bg-blue-500", confirmed: "bg-indigo-500",
+                              pre_series: "bg-purple-500", in_production: "bg-orange-500", shipping: "bg-yellow-500",
+                              customs: "bg-amber-500", delivered: "bg-green-500", closed: "bg-green-700", cancelled: "bg-red-500",
+                            };
+                            const dotColor = statusColorMap[h.status] || "bg-muted-foreground";
+                            return (
+                              <div key={h.id} className="relative flex items-start gap-3">
+                                <div className={cn("absolute -left-[21px] top-1 w-3 h-3 rounded-full border-2 border-background", dotColor)} />
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-2">
+                                    <Badge className={cn("text-[10px]", getStatusInfo(h.status).color)}>{getStatusInfo(h.status).label}</Badge>
+                                    <span className="font-mono text-[10px] text-muted-foreground">{new Date(h.created_at).toLocaleString("it-IT", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })}</span>
+                                  </div>
+                                  {h.notes && <p className="text-xs text-muted-foreground mt-0.5">{h.notes}</p>}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  </TabsContent>
+
+                </div>
+              </Tabs>
             </>
           )}
         </DialogContent>
