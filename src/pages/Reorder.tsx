@@ -242,11 +242,35 @@ export default function ReorderPage() {
     setSelectedIds(new Set(criticalIds));
   };
 
-  const openPoDialog = () => {
-    const selected = suggestions.filter(i => selectedIds.has(i.id));
+  const openPoDialog = (overrideItemIds?: string[]) => {
+    const targetIds = overrideItemIds ?? Array.from(selectedIds);
+    const selected = suggestions.filter(i => targetIds.includes(i.id));
+    if (selected.length === 0) return;
+
+    // Verifica che almeno un articolo abbia fornitore configurato
+    const itemsWithoutSupplier = selected.filter(item =>
+      supplierItems.filter(si => si.item_id === item.id).length === 0
+    );
+    if (itemsWithoutSupplier.length === selected.length) {
+      toast.error(
+        selected.length === 1
+          ? "Nessun fornitore configurato per questo articolo"
+          : "Nessuno degli articoli selezionati ha un fornitore configurato"
+      );
+      return;
+    }
+    if (itemsWithoutSupplier.length > 0) {
+      toast.warning(
+        `${itemsWithoutSupplier.length} articoli senza fornitore — saranno esclusi`
+      );
+    }
+    const eligible = selected.filter(item =>
+      supplierItems.some(si => si.item_id === item.id)
+    );
+
     // Find best supplier per item
     const supplierCounts: Record<string, number> = {};
-    const lines = selected.map(item => {
+    const lines = eligible.map(item => {
       const siForItem = supplierItems.filter(si => si.item_id === item.id);
       const bestSi = siForItem.sort((a, b) => Number(a.unit_price || 999999) - Number(b.unit_price || 999999))[0];
       if (bestSi) supplierCounts[bestSi.supplier_id] = (supplierCounts[bestSi.supplier_id] || 0) + 1;
@@ -255,7 +279,6 @@ export default function ReorderPage() {
       const ss = item.safetyStock || 0;
       const eoq = item.eoq || 0;
       let suggestedQty = Math.max(eoq, rop + ss - item.stock);
-      // Round up to order_multiple
       const mult = bestSi?.order_multiple || 1;
       if (mult > 1) suggestedQty = Math.ceil(suggestedQty / mult) * mult;
 
@@ -266,12 +289,10 @@ export default function ReorderPage() {
       };
     });
 
-    // Pre-select the supplier with the most items
     const bestSupplier = Object.entries(supplierCounts).sort((a, b) => b[1] - a[1])[0];
     setPoSupplierId(bestSupplier?.[0] || "");
 
-    // Compute average lead time for delivery date
-    const allSi = selected.flatMap(item => supplierItems.filter(si => si.item_id === item.id && si.lead_time_days));
+    const allSi = eligible.flatMap(item => supplierItems.filter(si => si.item_id === item.id && si.lead_time_days));
     const avgLead = allSi.length > 0 ? Math.round(allSi.reduce((s, si) => s + Number(si.lead_time_days), 0) / allSi.length) : 14;
     const delivDate = new Date();
     delivDate.setDate(delivDate.getDate() + avgLead);
