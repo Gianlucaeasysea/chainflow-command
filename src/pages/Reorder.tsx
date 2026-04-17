@@ -356,6 +356,11 @@ export default function ReorderPage() {
           <div className="divide-y divide-border">
             {suggestions.map(item => {
               const suggestedQty = item.eoq || (item.maxStock ? item.maxStock - item.stock : 0);
+              const siForItem = supplierItems.filter(si => si.item_id === item.id);
+              const bestSi = siForItem.sort((a, b) => Number(a.unit_price || 999999) - Number(b.unit_price || 999999))[0];
+              const supplierName = bestSi
+                ? suppliers.find((s: any) => s.id === bestSi.supplier_id)?.company_name
+                : null;
               return (
                 <div key={item.id} className="p-3 flex items-center gap-4">
                   <Checkbox
@@ -364,13 +369,31 @@ export default function ReorderPage() {
                   />
                   {statusIcon(item.status)}
                   <div className="flex-1 min-w-0">
-                    <span className="font-mono text-primary text-xs">{item.item_code}</span>
-                    <span className="text-foreground/70 text-xs ml-2">{item.description}</span>
+                    <div>
+                      <span className="font-mono text-primary text-xs">{item.item_code}</span>
+                      <span className="text-foreground/70 text-xs ml-2">{item.description}</span>
+                    </div>
+                    <div className="text-[11px] text-muted-foreground mt-0.5">
+                      {supplierName ? (
+                        <>Fornitore: <span className="text-foreground/80">{supplierName}</span></>
+                      ) : (
+                        <span className="text-status-warning">Nessun fornitore configurato</span>
+                      )}
+                    </div>
                   </div>
                   <div className="text-right">
                     <div className="font-mono text-xs text-muted-foreground">Stock: <span className={cn(item.status === "critical" ? "text-status-critical" : "text-status-warning")}>{item.stock.toFixed(0)}</span> / ROP: {item.rop?.toFixed(0)}</div>
                     <div className="font-mono text-xs text-foreground">Suggerito: <span className="text-primary">{suggestedQty.toFixed(0)} {item.unit_of_measure}</span></div>
                   </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="gap-1 h-8 text-xs"
+                    disabled={!bestSi}
+                    onClick={() => openPoDialog([item.id])}
+                  >
+                    <ShoppingCart className="h-3.5 w-3.5" /> Genera PO
+                  </Button>
                 </div>
               );
             })}
