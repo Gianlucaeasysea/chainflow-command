@@ -167,7 +167,7 @@ export default function ItemsPage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border bg-muted/30">
-                {["Codice", "Descrizione", "Tipo", "UdM", "Costo Unit.", "Costo Ass.", "Categoria", ""].map(h => (
+                {["Codice", "EAN", "Descrizione", "Tipo", "UdM", "Costo Unit.", "Costo Ass.", "Categoria", ""].map(h => (
                   <th key={h} className="text-left p-3 text-muted-foreground text-xs uppercase tracking-wider font-mono font-medium">{h}</th>
                 ))}
               </tr>
