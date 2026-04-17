@@ -152,13 +152,42 @@ export default function BomPage() {
   };
 
   const isCostOutdated = (bom: typeof bomHeaders[0]) => {
-    // We need to compute BOM cost for this header — only meaningful for selected BOM
-    // For list view, compare item.unit_cost with a quick flag
     const lastStd = getLatestStandardCost(bom.item_id);
-    if (lastStd === null) return true; // never set
+    if (lastStd === null) return true;
     const item = getItem(bom.item_id) as any;
     const itemCost = Number(item?.unit_cost || 0);
     return Math.abs(lastStd - itemCost) > 0.01 || lastStd === 0;
+  };
+
+  // Load all bom_lines once for cost computation in list view
+  const { data: allBomLines = [] } = useQuery({
+    queryKey: ["bom_lines_all"],
+    queryFn: async () => {
+      const { data, error } = await supabase.from("bom_lines").select("*");
+      if (error) throw error;
+      return data;
+    },
+  });
+
+  // Compute cost of a BOM header by id (uses items.unit_cost + assembly_cost)
+  const computeBomCost = (bomId: string) => {
+    const lines = allBomLines.filter(l => l.bom_header_id === bomId);
+    if (lines.length === 0) return null;
+    let cost = 0;
+    let hasOutdatedComponent = false;
+    const ninetyDaysAgo = Date.now() - 90 * 24 * 60 * 60 * 1000;
+    for (const line of lines) {
+      const compItem = getItem(line.component_item_id) as any;
+      const unitCost = Number(compItem?.unit_cost || 0) + Number(compItem?.assembly_cost || 0);
+      const effectiveQty = Number(line.quantity) * (1 + Number(line.waste_pct) / 100);
+      cost += unitCost * effectiveQty;
+      // Check component cost age
+      if (compItem?.updated_at) {
+        const updatedAt = new Date(compItem.updated_at).getTime();
+        if (updatedAt < ninetyDaysAgo) hasOutdatedComponent = true;
+      }
+    }
+    return { cost, hasOutdatedComponent };
   };
 
   const selectedHeader = bomHeaders.find(b => b.id === selectedBom);
