@@ -18,6 +18,7 @@ import {
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import ExportButton from "@/components/ExportButton";
+import { computeStockMap } from "@/lib/stock";
 
 const MGMT_TYPES = [
   { value: "reorder_point", label: "Punto di Riordino" },
@@ -152,9 +153,8 @@ export default function ReorderPage() {
     onError: (e) => toast.error((e as Error).message),
   });
 
-  const getStock = (itemId: string) => {
-    return movements.filter(m => m.item_id === itemId).reduce((sum, m) => sum + Number(m.quantity), 0);
-  };
+  const stockMap = computeStockMap(movements as any);
+  const getStock = (itemId: string) => stockMap.get(itemId) || 0;
 
   const itemsWithStatus = items.map(item => {
     const params = reorderParams.find(r => r.item_id === item.id);
