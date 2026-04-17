@@ -1,7 +1,7 @@
 import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { Plus, Search, AlertTriangle, Zap } from "lucide-react";
+import { Plus, Search, AlertTriangle, Zap, Eye, History } from "lucide-react";
 import TableSkeleton from "@/components/TableSkeleton";
 import EmptyState from "@/components/EmptyState";
 import { Button } from "@/components/ui/button";
@@ -47,7 +47,23 @@ export default function ProductionOrdersPage() {
     priority: "normal", planned_start: "", planned_end: "", notes: "",
   });
   const [stockWarning, setStockWarning] = useState<{ orderId: string; status: string; checks: StockCheck[] } | null>(null);
+  const [detailOrderId, setDetailOrderId] = useState<string | null>(null);
   const qc = useQueryClient();
+
+  const { data: woHistory = [] } = useQuery({
+    queryKey: ["wo_status_history", detailOrderId],
+    queryFn: async () => {
+      if (!detailOrderId) return [];
+      const { data, error } = await supabase
+        .from("wo_status_history")
+        .select("*")
+        .eq("production_order_id", detailOrderId)
+        .order("created_at", { ascending: true });
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!detailOrderId,
+  });
 
   const { data: items = [] } = useQuery({
     queryKey: ["items"],
@@ -67,7 +83,7 @@ export default function ProductionOrdersPage() {
   const createMut = useMutation({
     mutationFn: async () => {
       const woNum = `WO-${new Date().getFullYear()}-${String(orders.length + 1).padStart(4, "0")}`;
-      const { error } = await supabase.from("production_orders").insert({
+      const { data, error } = await supabase.from("production_orders").insert({
         wo_number: woNum,
         product_item_id: form.product_item_id,
         bom_header_id: form.bom_header_id || null,
@@ -76,11 +92,18 @@ export default function ProductionOrdersPage() {
         planned_start: form.planned_start || null,
         planned_end: form.planned_end || null,
         notes: form.notes || null,
-      });
+      }).select("id").single();
       if (error) throw error;
+      // Audit trail: initial status
+      await supabase.from("wo_status_history").insert({
+        production_order_id: data.id,
+        status: "planned",
+        notes: "ODP creato",
+      });
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["production_orders"] });
+      qc.invalidateQueries({ queryKey: ["wo_status_history"] });
       setCreateOpen(false);
       setForm({ product_item_id: "", bom_header_id: "", quantity_to_produce: "1", priority: "normal", planned_start: "", planned_end: "", notes: "" });
       toast.success("Ordine di produzione creato");
@@ -187,6 +210,7 @@ export default function ProductionOrdersPage() {
     mutationFn: async ({ id, status }: { id: string; status: string }) => {
       const order = orders.find(o => o.id === id);
       if (!order) throw new Error("Ordine non trovato");
+      const oldStatus = order.status || "unknown";
 
       // Material allocation check
       if (status === "materials_allocated") {
@@ -200,6 +224,15 @@ export default function ProductionOrdersPage() {
       const { error } = await supabase.from("production_orders").update(updates).eq("id", id);
       if (error) throw error;
 
+      // Audit trail
+      const oldLabel = WO_STATUSES.find(s => s.value === oldStatus)?.label || oldStatus;
+      const newLabel = WO_STATUSES.find(s => s.value === status)?.label || status;
+      await supabase.from("wo_status_history").insert({
+        production_order_id: id,
+        status,
+        notes: `Da ${oldLabel} → ${newLabel}`,
+      });
+
       // Load finished product
       if (status === "completed") {
         await loadFinishedProduct(order);
@@ -210,6 +243,7 @@ export default function ProductionOrdersPage() {
     onSuccess: (data) => {
       if (data?.blocked) return;
       qc.invalidateQueries({ queryKey: ["production_orders"] });
+      qc.invalidateQueries({ queryKey: ["wo_status_history"] });
       toast.success("Stato aggiornato");
     },
     onError: (e) => toast.error((e as Error).message),
@@ -228,10 +262,18 @@ export default function ProductionOrdersPage() {
       const updates: any = { status: "materials_allocated" };
       const { error } = await supabase.from("production_orders").update(updates).eq("id", order.id);
       if (error) throw error;
+
+      // Audit trail (forced)
+      await supabase.from("wo_status_history").insert({
+        production_order_id: order.id,
+        status: "materials_allocated",
+        notes: "Allocazione forzata con deficit di stock",
+      });
     },
     onSuccess: () => {
       setStockWarning(null);
       qc.invalidateQueries({ queryKey: ["production_orders"] });
+      qc.invalidateQueries({ queryKey: ["wo_status_history"] });
       toast.success("Materiali allocati (con deficit)");
     },
     onError: (e) => toast.error((e as Error).message),
@@ -303,13 +345,20 @@ export default function ProductionOrdersPage() {
                     <td className="p-3 font-mono text-xs text-muted-foreground">{o.planned_start || "—"}</td>
                     <td className="p-3 font-mono text-xs text-muted-foreground">{o.planned_end || "—"}</td>
                     <td className="p-3">
-                      {nextStatus && (
-                        <Button size="sm" variant="outline" className="h-7 text-xs"
-                          disabled={updateStatusMut.isPending}
-                          onClick={() => updateStatusMut.mutate({ id: o.id, status: nextStatus.value })}>
-                          → {nextStatus.label}
+                      <div className="flex items-center gap-1">
+                        <Button size="icon" variant="ghost" className="h-7 w-7"
+                          title="Storico stato"
+                          onClick={() => setDetailOrderId(o.id)}>
+                          <Eye className="h-3.5 w-3.5 text-muted-foreground" />
                         </Button>
-                      )}
+                        {nextStatus && (
+                          <Button size="sm" variant="outline" className="h-7 text-xs"
+                            disabled={updateStatusMut.isPending}
+                            onClick={() => updateStatusMut.mutate({ id: o.id, status: nextStatus.value })}>
+                            → {nextStatus.label}
+                          </Button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 );
@@ -318,6 +367,81 @@ export default function ProductionOrdersPage() {
           </table>
         </div>
       </div>
+
+      {/* Detail Dialog with status history */}
+      <Dialog open={!!detailOrderId} onOpenChange={(open) => { if (!open) setDetailOrderId(null); }}>
+        <DialogContent className="max-w-2xl">
+          {(() => {
+            const order = orders.find(o => o.id === detailOrderId);
+            if (!order) return null;
+            const si = getStatusInfo(order.status);
+            const woStatusColorMap: Record<string, string> = {
+              planned: "bg-muted-foreground",
+              materials_allocated: "bg-blue-500",
+              in_progress: "bg-orange-500",
+              quality_check: "bg-indigo-500",
+              completed: "bg-green-500",
+              closed: "bg-green-700",
+            };
+            return (
+              <>
+                <DialogHeader>
+                  <DialogTitle className="flex items-center gap-3">
+                    <span className="font-mono text-primary">{order.wo_number}</span>
+                    <Badge className={cn("text-xs", si.color)}>{si.label}</Badge>
+                  </DialogTitle>
+                </DialogHeader>
+                <div className="space-y-4">
+                  <div className="grid grid-cols-3 gap-3 text-xs">
+                    <div className="bg-muted/30 rounded-lg p-3">
+                      <span className="text-muted-foreground block font-mono uppercase tracking-wider mb-1">Prodotto</span>
+                      <span className="font-mono text-foreground">{getItemCode(order.product_item_id)}</span>
+                    </div>
+                    <div className="bg-muted/30 rounded-lg p-3">
+                      <span className="text-muted-foreground block font-mono uppercase tracking-wider mb-1">Quantità</span>
+                      <span className="font-mono text-foreground">{Number(order.quantity_to_produce)}</span>
+                    </div>
+                    <div className="bg-muted/30 rounded-lg p-3">
+                      <span className="text-muted-foreground block font-mono uppercase tracking-wider mb-1">Periodo Pianif.</span>
+                      <span className="font-mono text-foreground text-[11px]">{order.planned_start || "—"} → {order.planned_end || "—"}</span>
+                    </div>
+                  </div>
+
+                  <div className="bg-muted/30 rounded-lg p-4">
+                    <h3 className="text-xs font-mono uppercase tracking-wider text-muted-foreground mb-3 flex items-center gap-1.5">
+                      <History className="h-3.5 w-3.5" /> Storico Stato
+                    </h3>
+                    {woHistory.length === 0 ? (
+                      <p className="text-xs text-muted-foreground py-2">Nessun cambio di stato registrato.</p>
+                    ) : (
+                      <div className="relative pl-4 space-y-3 border-l-2 border-border ml-1">
+                        {woHistory.map((h: any) => {
+                          const dotColor = woStatusColorMap[h.status] || "bg-muted-foreground";
+                          const stepInfo = WO_STATUSES.find(s => s.value === h.status);
+                          return (
+                            <div key={h.id} className="relative flex items-start gap-3">
+                              <div className={cn("absolute -left-[21px] top-1 w-3 h-3 rounded-full border-2 border-background", dotColor)} />
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <Badge className={cn("text-[10px]", stepInfo?.color || "")}>{stepInfo?.label || h.status}</Badge>
+                                  <span className="font-mono text-[10px] text-muted-foreground">
+                                    {new Date(h.created_at).toLocaleString("it-IT", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+                                  </span>
+                                </div>
+                                {h.notes && <p className="text-xs text-muted-foreground mt-0.5">{h.notes}</p>}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </>
+            );
+          })()}
+        </DialogContent>
+      </Dialog>
 
       {/* Create WO Dialog */}
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
