@@ -97,57 +97,99 @@ export default function ReorderPage() {
     onError: (e) => toast.error((e as Error).message),
   });
 
+  // Crea un singolo PO (usato sia da single-row che da batch dopo split per fornitore)
+  const createSinglePo = async (
+    supplierId: string,
+    lines: { itemId: string; qty: number; price: number }[],
+    orderDate: string,
+    deliveryDate: string,
+    notes: string
+  ) => {
+    const year = new Date().getFullYear();
+    const { data: existingPos } = await supabase
+      .from("purchase_orders")
+      .select("po_number")
+      .ilike("po_number", `PO-${year}-%`);
+    // Estrai il massimo seq esistente per evitare collisioni
+    const maxSeq = (existingPos || []).reduce((m, p) => {
+      const match = p.po_number.match(/PO-\d{4}-(\d+)/);
+      const n = match ? parseInt(match[1], 10) : 0;
+      return Math.max(m, n);
+    }, 0);
+    const poNumber = `PO-${year}-${String(maxSeq + 1).padStart(4, "0")}`;
+
+    const totalAmount = lines.reduce((s, l) => s + l.qty * l.price, 0);
+
+    const { data: poData, error: poErr } = await supabase
+      .from("purchase_orders")
+      .insert({
+        po_number: poNumber,
+        supplier_id: supplierId,
+        order_date: orderDate,
+        requested_delivery_date: deliveryDate || null,
+        status: "draft",
+        notes: notes || "Generato automaticamente da suggerimento riordino",
+        total_amount: totalAmount,
+      })
+      .select("id")
+      .single();
+    if (poErr) throw poErr;
+
+    const lineRows = lines.map((l, idx) => ({
+      purchase_order_id: poData.id,
+      item_id: l.itemId,
+      quantity: l.qty,
+      unit_price: l.price,
+      sort_order: idx,
+      line_total: l.qty * l.price,
+    }));
+    const { error: lineErr } = await supabase.from("po_lines").insert(lineRows);
+    if (lineErr) throw lineErr;
+
+    if (deliveryDate) {
+      const { error: delErr } = await supabase.from("po_deliveries").insert({
+        purchase_order_id: poData.id,
+        scheduled_date: deliveryDate,
+        quantity: lines.reduce((s, l) => s + l.qty, 0),
+        status: "scheduled",
+      });
+      if (delErr) throw delErr;
+    }
+    return poNumber;
+  };
+
   const createPoMut = useMutation({
     mutationFn: async () => {
-      // Generate PO number
-      const year = new Date().getFullYear();
-      const { data: existingPos } = await supabase.from("purchase_orders").select("po_number").ilike("po_number", `PO-${year}-%`);
-      const seq = (existingPos?.length || 0) + 1;
-      const poNumber = `PO-${year}-${String(seq).padStart(4, "0")}`;
-
-      const totalAmount = poLines.reduce((s, l) => s + l.qty * l.price, 0);
-
-      const { data: poData, error: poErr } = await supabase.from("purchase_orders").insert({
-        po_number: poNumber,
-        supplier_id: poSupplierId,
-        order_date: poOrderDate,
-        requested_delivery_date: poDeliveryDate || null,
-        status: "draft",
-        notes: poNotes || null,
-        total_amount: totalAmount,
-      }).select("id").single();
-      if (poErr) throw poErr;
-
-      const lineRows = poLines.map((l, idx) => ({
-        purchase_order_id: poData.id,
-        item_id: l.itemId,
-        quantity: l.qty,
-        unit_price: l.price,
-        sort_order: idx,
-        line_total: l.qty * l.price,
-      }));
-      const { error: lineErr } = await supabase.from("po_lines").insert(lineRows);
-      if (lineErr) throw lineErr;
-
-      if (poDeliveryDate) {
-        const { error: delErr } = await supabase.from("po_deliveries").insert({
-          purchase_order_id: poData.id,
-          scheduled_date: poDeliveryDate,
-          quantity: poLines.reduce((s, l) => s + l.qty, 0),
-          status: "scheduled",
-        });
-        if (delErr) throw delErr;
+      // Se ci sono fornitori multipli rilevati nel batch, splitta in PO separati raggruppando per fornitore preferito di ogni articolo
+      if (hasMultipleSuppliers) {
+        const groups = new Map<string, { itemId: string; qty: number; price: number }[]>();
+        for (const line of poLines) {
+          const siForItem = supplierItems.filter(si => si.item_id === line.itemId);
+          const best = siForItem.sort((a, b) => Number(a.unit_price || 999999) - Number(b.unit_price || 999999))[0];
+          const sid = best?.supplier_id || poSupplierId;
+          if (!groups.has(sid)) groups.set(sid, []);
+          groups.get(sid)!.push(line);
+        }
+        const created: string[] = [];
+        for (const [sid, lines] of groups) {
+          const num = await createSinglePo(sid, lines, poOrderDate, poDeliveryDate, poNotes);
+          created.push(num);
+        }
+        return created;
       }
-
-      return poNumber;
+      const num = await createSinglePo(poSupplierId, poLines, poOrderDate, poDeliveryDate, poNotes);
+      return [num];
     },
-    onSuccess: (poNumber) => {
+    onSuccess: (poNumbers) => {
       qc.invalidateQueries({ queryKey: ["purchase_orders"] });
       qc.invalidateQueries({ queryKey: ["po_lines"] });
       setPoDialogOpen(false);
       setSelectedIds(new Set());
-      toast.success(`ODA ${poNumber} creato`, {
-        action: { label: "Apri ODA", onClick: () => navigate("/purchase-orders") },
+      const label = poNumbers.length === 1
+        ? `ODA ${poNumbers[0]} creato`
+        : `Creati ${poNumbers.length} ordini: ${poNumbers.join(", ")}`;
+      toast.success(label, {
+        action: { label: "Apri Ordini", onClick: () => navigate("/purchase-orders") },
       });
     },
     onError: (e) => toast.error((e as Error).message),
