@@ -345,13 +345,20 @@ export default function ProductionOrdersPage() {
                     <td className="p-3 font-mono text-xs text-muted-foreground">{o.planned_start || "—"}</td>
                     <td className="p-3 font-mono text-xs text-muted-foreground">{o.planned_end || "—"}</td>
                     <td className="p-3">
-                      {nextStatus && (
-                        <Button size="sm" variant="outline" className="h-7 text-xs"
-                          disabled={updateStatusMut.isPending}
-                          onClick={() => updateStatusMut.mutate({ id: o.id, status: nextStatus.value })}>
-                          → {nextStatus.label}
+                      <div className="flex items-center gap-1">
+                        <Button size="icon" variant="ghost" className="h-7 w-7"
+                          title="Storico stato"
+                          onClick={() => setDetailOrderId(o.id)}>
+                          <Eye className="h-3.5 w-3.5 text-muted-foreground" />
                         </Button>
-                      )}
+                        {nextStatus && (
+                          <Button size="sm" variant="outline" className="h-7 text-xs"
+                            disabled={updateStatusMut.isPending}
+                            onClick={() => updateStatusMut.mutate({ id: o.id, status: nextStatus.value })}>
+                            → {nextStatus.label}
+                          </Button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 );
