@@ -795,6 +795,30 @@ export type Database = {
         }
         Relationships: []
       }
+      wo_status_history: {
+        Row: {
+          created_at: string
+          id: string
+          notes: string | null
+          production_order_id: string
+          status: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          notes?: string | null
+          production_order_id: string
+          status: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          notes?: string | null
+          production_order_id?: string
+          status?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
