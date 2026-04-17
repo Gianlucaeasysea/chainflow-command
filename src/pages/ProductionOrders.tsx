@@ -368,6 +368,81 @@ export default function ProductionOrdersPage() {
         </div>
       </div>
 
+      {/* Detail Dialog with status history */}
+      <Dialog open={!!detailOrderId} onOpenChange={(open) => { if (!open) setDetailOrderId(null); }}>
+        <DialogContent className="max-w-2xl">
+          {(() => {
+            const order = orders.find(o => o.id === detailOrderId);
+            if (!order) return null;
+            const si = getStatusInfo(order.status);
+            const woStatusColorMap: Record<string, string> = {
+              planned: "bg-muted-foreground",
+              materials_allocated: "bg-blue-500",
+              in_progress: "bg-orange-500",
+              quality_check: "bg-indigo-500",
+              completed: "bg-green-500",
+              closed: "bg-green-700",
+            };
+            return (
+              <>
+                <DialogHeader>
+                  <DialogTitle className="flex items-center gap-3">
+                    <span className="font-mono text-primary">{order.wo_number}</span>
+                    <Badge className={cn("text-xs", si.color)}>{si.label}</Badge>
+                  </DialogTitle>
+                </DialogHeader>
+                <div className="space-y-4">
+                  <div className="grid grid-cols-3 gap-3 text-xs">
+                    <div className="bg-muted/30 rounded-lg p-3">
+                      <span className="text-muted-foreground block font-mono uppercase tracking-wider mb-1">Prodotto</span>
+                      <span className="font-mono text-foreground">{getItemCode(order.product_item_id)}</span>
+                    </div>
+                    <div className="bg-muted/30 rounded-lg p-3">
+                      <span className="text-muted-foreground block font-mono uppercase tracking-wider mb-1">Quantità</span>
+                      <span className="font-mono text-foreground">{Number(order.quantity_to_produce)}</span>
+                    </div>
+                    <div className="bg-muted/30 rounded-lg p-3">
+                      <span className="text-muted-foreground block font-mono uppercase tracking-wider mb-1">Periodo Pianif.</span>
+                      <span className="font-mono text-foreground text-[11px]">{order.planned_start || "—"} → {order.planned_end || "—"}</span>
+                    </div>
+                  </div>
+
+                  <div className="bg-muted/30 rounded-lg p-4">
+                    <h3 className="text-xs font-mono uppercase tracking-wider text-muted-foreground mb-3 flex items-center gap-1.5">
+                      <History className="h-3.5 w-3.5" /> Storico Stato
+                    </h3>
+                    {woHistory.length === 0 ? (
+                      <p className="text-xs text-muted-foreground py-2">Nessun cambio di stato registrato.</p>
+                    ) : (
+                      <div className="relative pl-4 space-y-3 border-l-2 border-border ml-1">
+                        {woHistory.map((h: any) => {
+                          const dotColor = woStatusColorMap[h.status] || "bg-muted-foreground";
+                          const stepInfo = WO_STATUSES.find(s => s.value === h.status);
+                          return (
+                            <div key={h.id} className="relative flex items-start gap-3">
+                              <div className={cn("absolute -left-[21px] top-1 w-3 h-3 rounded-full border-2 border-background", dotColor)} />
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <Badge className={cn("text-[10px]", stepInfo?.color || "")}>{stepInfo?.label || h.status}</Badge>
+                                  <span className="font-mono text-[10px] text-muted-foreground">
+                                    {new Date(h.created_at).toLocaleString("it-IT", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+                                  </span>
+                                </div>
+                                {h.notes && <p className="text-xs text-muted-foreground mt-0.5">{h.notes}</p>}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </>
+            );
+          })()}
+        </DialogContent>
+      </Dialog>
+
       {/* Create WO Dialog */}
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent className="max-w-lg">
