@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { AlertTriangle, CheckCircle, ChevronRight } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { format, differenceInDays } from "date-fns";
+import { computeStockMap } from "@/lib/stock";
 
 type Alert = { title: string; desc: string; severity: "critical" | "warning"; link: string };
 
@@ -70,12 +71,7 @@ export function AlertPanel() {
       const { data: movements } = await supabase.from("stock_movements").select("item_id, movement_type, quantity").in("item_id", itemIds);
       const { data: items } = await supabase.from("items").select("id, item_code, description, unit_of_measure").in("id", itemIds);
 
-      const positiveTypes = ["po_inbound", "adjustment_in", "customer_return"];
-      const stockMap = new Map<string, number>();
-      for (const m of movements || []) {
-        const sign = positiveTypes.includes(m.movement_type) ? 1 : -1;
-        stockMap.set(m.item_id, (stockMap.get(m.item_id) || 0) + sign * m.quantity);
-      }
+      const stockMap = computeStockMap(movements || []);
       const iMap = new Map((items || []).map((i) => [i.id, i]));
 
       return params

@@ -17,7 +17,8 @@ import {
 } from "@/components/ui/select";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { POSITIVE_MOVEMENT_TYPES, WO_STATUS_LABELS } from "@/lib/constants";
+import { WO_STATUS_LABELS } from "@/lib/constants";
+import { computeStockMap } from "@/lib/stock";
 
 const WO_STATUSES = [
   { value: "planned", label: WO_STATUS_LABELS.planned, color: "text-muted-foreground bg-muted/50" },
@@ -34,8 +35,6 @@ const PRIORITIES = [
   { value: "high", label: "Alta", color: "text-status-warning" },
   { value: "urgent", label: "Urgente", color: "text-status-critical" },
 ];
-
-const POSITIVE_MOVE_TYPES = POSITIVE_MOVEMENT_TYPES as readonly string[];
 
 type StockCheck = { item_code: string; description: string; needed: number; available: number; uom: string };
 
@@ -92,12 +91,7 @@ export default function ProductionOrdersPage() {
   // Helper: compute stock for items
   const computeStock = async (itemIds: string[]) => {
     const { data: movements } = await supabase.from("stock_movements").select("item_id, movement_type, quantity").in("item_id", itemIds);
-    const map = new Map<string, number>();
-    for (const m of movements || []) {
-      const sign = POSITIVE_MOVE_TYPES.includes(m.movement_type) ? 1 : -1;
-      map.set(m.item_id, (map.get(m.item_id) || 0) + sign * Math.abs(m.quantity));
-    }
-    return map;
+    return computeStockMap(movements || []);
   };
 
   // Perform material allocation (scarico BOM)
@@ -149,7 +143,7 @@ export default function ProductionOrdersPage() {
       await supabase.from("stock_movements").insert({
         item_id: bl.component_item_id,
         movement_type: "wo_output",
-        quantity: qty,
+        quantity: Math.abs(qty),
         reference_id: order.id,
         reference_type: "production_order",
         notes: `Allocato per ODP: ${order.wo_number}`,
@@ -171,12 +165,13 @@ export default function ProductionOrdersPage() {
       quantity_on_hand: order.quantity_to_produce,
       status: "approved",
       production_date: new Date().toISOString().split("T")[0],
+      notes: `Prodotto da ODP: ${order.wo_number}`,
     });
 
     await supabase.from("stock_movements").insert({
       item_id: order.product_item_id,
-      movement_type: "po_inbound",
-      quantity: order.quantity_to_produce,
+      movement_type: "wo_finish",
+      quantity: Math.abs(order.quantity_to_produce),
       lot_number: lotNumber,
       reference_id: order.id,
       reference_type: "production_order",
