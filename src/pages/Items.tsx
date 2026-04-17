@@ -136,7 +136,7 @@ export default function ItemsPage() {
         </div>
         <div className="flex gap-2">
           <ExportButton filename="articoli" columns={[
-            { key: "item_code", label: "Codice" }, { key: "description", label: "Descrizione" },
+            { key: "item_code", label: "Codice" }, { key: "ean", label: "EAN" }, { key: "description", label: "Descrizione" },
             { key: "category", label: "Categoria" }, { key: "unit_of_measure", label: "UdM" },
             { key: "item_type", label: "Tipo" }, { key: "unit_cost", label: "Costo Unitario" },
             { key: "assembly_cost", label: "Costo Assemblaggio" }, { key: "notes", label: "Note" },
