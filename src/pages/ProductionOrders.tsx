@@ -47,7 +47,23 @@ export default function ProductionOrdersPage() {
     priority: "normal", planned_start: "", planned_end: "", notes: "",
   });
   const [stockWarning, setStockWarning] = useState<{ orderId: string; status: string; checks: StockCheck[] } | null>(null);
+  const [detailOrderId, setDetailOrderId] = useState<string | null>(null);
   const qc = useQueryClient();
+
+  const { data: woHistory = [] } = useQuery({
+    queryKey: ["wo_status_history", detailOrderId],
+    queryFn: async () => {
+      if (!detailOrderId) return [];
+      const { data, error } = await supabase
+        .from("wo_status_history")
+        .select("*")
+        .eq("production_order_id", detailOrderId)
+        .order("created_at", { ascending: true });
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!detailOrderId,
+  });
 
   const { data: items = [] } = useQuery({
     queryKey: ["items"],
