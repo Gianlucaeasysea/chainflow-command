@@ -382,7 +382,7 @@ export default function ReorderPage() {
             </Button>
             <div className="flex-1" />
             {selectedIds.size > 0 && (
-              <Button size="sm" className="gap-1 h-8" onClick={openPoDialog}>
+              <Button size="sm" className="gap-1 h-8" onClick={() => openPoDialog()}>
                 <ShoppingCart className="h-3.5 w-3.5" /> Genera PO ({selectedIds.size} selezionati)
               </Button>
             )}
