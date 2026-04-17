@@ -18,6 +18,7 @@ import {
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import ExportButton from "@/components/ExportButton";
+import { computeStockMap } from "@/lib/stock";
 
 const MGMT_TYPES = [
   { value: "reorder_point", label: "Punto di Riordino" },
@@ -96,65 +97,106 @@ export default function ReorderPage() {
     onError: (e) => toast.error((e as Error).message),
   });
 
+  // Crea un singolo PO (usato sia da single-row che da batch dopo split per fornitore)
+  const createSinglePo = async (
+    supplierId: string,
+    lines: { itemId: string; qty: number; price: number }[],
+    orderDate: string,
+    deliveryDate: string,
+    notes: string
+  ) => {
+    const year = new Date().getFullYear();
+    const { data: existingPos } = await supabase
+      .from("purchase_orders")
+      .select("po_number")
+      .ilike("po_number", `PO-${year}-%`);
+    // Estrai il massimo seq esistente per evitare collisioni
+    const maxSeq = (existingPos || []).reduce((m, p) => {
+      const match = p.po_number.match(/PO-\d{4}-(\d+)/);
+      const n = match ? parseInt(match[1], 10) : 0;
+      return Math.max(m, n);
+    }, 0);
+    const poNumber = `PO-${year}-${String(maxSeq + 1).padStart(4, "0")}`;
+
+    const totalAmount = lines.reduce((s, l) => s + l.qty * l.price, 0);
+
+    const { data: poData, error: poErr } = await supabase
+      .from("purchase_orders")
+      .insert({
+        po_number: poNumber,
+        supplier_id: supplierId,
+        order_date: orderDate,
+        requested_delivery_date: deliveryDate || null,
+        status: "draft",
+        notes: notes || "Generato automaticamente da suggerimento riordino",
+        total_amount: totalAmount,
+      })
+      .select("id")
+      .single();
+    if (poErr) throw poErr;
+
+    const lineRows = lines.map((l, idx) => ({
+      purchase_order_id: poData.id,
+      item_id: l.itemId,
+      quantity: l.qty,
+      unit_price: l.price,
+      sort_order: idx,
+      line_total: l.qty * l.price,
+    }));
+    const { error: lineErr } = await supabase.from("po_lines").insert(lineRows);
+    if (lineErr) throw lineErr;
+
+    if (deliveryDate) {
+      const { error: delErr } = await supabase.from("po_deliveries").insert({
+        purchase_order_id: poData.id,
+        scheduled_date: deliveryDate,
+        quantity: lines.reduce((s, l) => s + l.qty, 0),
+        status: "scheduled",
+      });
+      if (delErr) throw delErr;
+    }
+    return poNumber;
+  };
+
   const createPoMut = useMutation({
     mutationFn: async () => {
-      // Generate PO number
-      const year = new Date().getFullYear();
-      const { data: existingPos } = await supabase.from("purchase_orders").select("po_number").ilike("po_number", `PO-${year}-%`);
-      const seq = (existingPos?.length || 0) + 1;
-      const poNumber = `PO-${year}-${String(seq).padStart(4, "0")}`;
-
-      const totalAmount = poLines.reduce((s, l) => s + l.qty * l.price, 0);
-
-      const { data: poData, error: poErr } = await supabase.from("purchase_orders").insert({
-        po_number: poNumber,
-        supplier_id: poSupplierId,
-        order_date: poOrderDate,
-        requested_delivery_date: poDeliveryDate || null,
-        status: "draft",
-        notes: poNotes || null,
-        total_amount: totalAmount,
-      }).select("id").single();
-      if (poErr) throw poErr;
-
-      const lineRows = poLines.map((l, idx) => ({
-        purchase_order_id: poData.id,
-        item_id: l.itemId,
-        quantity: l.qty,
-        unit_price: l.price,
-        sort_order: idx,
-        line_total: l.qty * l.price,
-      }));
-      const { error: lineErr } = await supabase.from("po_lines").insert(lineRows);
-      if (lineErr) throw lineErr;
-
-      if (poDeliveryDate) {
-        const { error: delErr } = await supabase.from("po_deliveries").insert({
-          purchase_order_id: poData.id,
-          scheduled_date: poDeliveryDate,
-          quantity: poLines.reduce((s, l) => s + l.qty, 0),
-          status: "scheduled",
-        });
-        if (delErr) throw delErr;
+      // Se ci sono fornitori multipli rilevati nel batch, splitta in PO separati raggruppando per fornitore preferito di ogni articolo
+      if (hasMultipleSuppliers) {
+        const groups = new Map<string, { itemId: string; qty: number; price: number }[]>();
+        for (const line of poLines) {
+          const siForItem = supplierItems.filter(si => si.item_id === line.itemId);
+          const best = siForItem.sort((a, b) => Number(a.unit_price || 999999) - Number(b.unit_price || 999999))[0];
+          const sid = best?.supplier_id || poSupplierId;
+          if (!groups.has(sid)) groups.set(sid, []);
+          groups.get(sid)!.push(line);
+        }
+        const created: string[] = [];
+        for (const [sid, lines] of groups) {
+          const num = await createSinglePo(sid, lines, poOrderDate, poDeliveryDate, poNotes);
+          created.push(num);
+        }
+        return created;
       }
-
-      return poNumber;
+      const num = await createSinglePo(poSupplierId, poLines, poOrderDate, poDeliveryDate, poNotes);
+      return [num];
     },
-    onSuccess: (poNumber) => {
+    onSuccess: (poNumbers) => {
       qc.invalidateQueries({ queryKey: ["purchase_orders"] });
       qc.invalidateQueries({ queryKey: ["po_lines"] });
       setPoDialogOpen(false);
       setSelectedIds(new Set());
-      toast.success(`ODA ${poNumber} creato`, {
-        action: { label: "Apri ODA", onClick: () => navigate("/purchase-orders") },
+      const label = poNumbers.length === 1
+        ? `ODA ${poNumbers[0]} creato`
+        : `Creati ${poNumbers.length} ordini: ${poNumbers.join(", ")}`;
+      toast.success(label, {
+        action: { label: "Apri Ordini", onClick: () => navigate("/purchase-orders") },
       });
     },
     onError: (e) => toast.error((e as Error).message),
   });
 
-  const getStock = (itemId: string) => {
-    return movements.filter(m => m.item_id === itemId).reduce((sum, m) => sum + Number(m.quantity), 0);
-  };
+  const stockMap = computeStockMap(movements as any);
+  const getStock = (itemId: string) => stockMap.get(itemId) || 0;
 
   const itemsWithStatus = items.map(item => {
     const params = reorderParams.find(r => r.item_id === item.id);
@@ -200,11 +242,35 @@ export default function ReorderPage() {
     setSelectedIds(new Set(criticalIds));
   };
 
-  const openPoDialog = () => {
-    const selected = suggestions.filter(i => selectedIds.has(i.id));
+  const openPoDialog = (overrideItemIds?: string[]) => {
+    const targetIds = overrideItemIds ?? Array.from(selectedIds);
+    const selected = suggestions.filter(i => targetIds.includes(i.id));
+    if (selected.length === 0) return;
+
+    // Verifica che almeno un articolo abbia fornitore configurato
+    const itemsWithoutSupplier = selected.filter(item =>
+      supplierItems.filter(si => si.item_id === item.id).length === 0
+    );
+    if (itemsWithoutSupplier.length === selected.length) {
+      toast.error(
+        selected.length === 1
+          ? "Nessun fornitore configurato per questo articolo"
+          : "Nessuno degli articoli selezionati ha un fornitore configurato"
+      );
+      return;
+    }
+    if (itemsWithoutSupplier.length > 0) {
+      toast.warning(
+        `${itemsWithoutSupplier.length} articoli senza fornitore — saranno esclusi`
+      );
+    }
+    const eligible = selected.filter(item =>
+      supplierItems.some(si => si.item_id === item.id)
+    );
+
     // Find best supplier per item
     const supplierCounts: Record<string, number> = {};
-    const lines = selected.map(item => {
+    const lines = eligible.map(item => {
       const siForItem = supplierItems.filter(si => si.item_id === item.id);
       const bestSi = siForItem.sort((a, b) => Number(a.unit_price || 999999) - Number(b.unit_price || 999999))[0];
       if (bestSi) supplierCounts[bestSi.supplier_id] = (supplierCounts[bestSi.supplier_id] || 0) + 1;
@@ -213,7 +279,6 @@ export default function ReorderPage() {
       const ss = item.safetyStock || 0;
       const eoq = item.eoq || 0;
       let suggestedQty = Math.max(eoq, rop + ss - item.stock);
-      // Round up to order_multiple
       const mult = bestSi?.order_multiple || 1;
       if (mult > 1) suggestedQty = Math.ceil(suggestedQty / mult) * mult;
 
@@ -224,12 +289,10 @@ export default function ReorderPage() {
       };
     });
 
-    // Pre-select the supplier with the most items
     const bestSupplier = Object.entries(supplierCounts).sort((a, b) => b[1] - a[1])[0];
     setPoSupplierId(bestSupplier?.[0] || "");
 
-    // Compute average lead time for delivery date
-    const allSi = selected.flatMap(item => supplierItems.filter(si => si.item_id === item.id && si.lead_time_days));
+    const allSi = eligible.flatMap(item => supplierItems.filter(si => si.item_id === item.id && si.lead_time_days));
     const avgLead = allSi.length > 0 ? Math.round(allSi.reduce((s, si) => s + Number(si.lead_time_days), 0) / allSi.length) : 14;
     const delivDate = new Date();
     delivDate.setDate(delivDate.getDate() + avgLead);
@@ -293,6 +356,11 @@ export default function ReorderPage() {
           <div className="divide-y divide-border">
             {suggestions.map(item => {
               const suggestedQty = item.eoq || (item.maxStock ? item.maxStock - item.stock : 0);
+              const siForItem = supplierItems.filter(si => si.item_id === item.id);
+              const bestSi = siForItem.sort((a, b) => Number(a.unit_price || 999999) - Number(b.unit_price || 999999))[0];
+              const supplierName = bestSi
+                ? suppliers.find((s: any) => s.id === bestSi.supplier_id)?.company_name
+                : null;
               return (
                 <div key={item.id} className="p-3 flex items-center gap-4">
                   <Checkbox
@@ -301,13 +369,31 @@ export default function ReorderPage() {
                   />
                   {statusIcon(item.status)}
                   <div className="flex-1 min-w-0">
-                    <span className="font-mono text-primary text-xs">{item.item_code}</span>
-                    <span className="text-foreground/70 text-xs ml-2">{item.description}</span>
+                    <div>
+                      <span className="font-mono text-primary text-xs">{item.item_code}</span>
+                      <span className="text-foreground/70 text-xs ml-2">{item.description}</span>
+                    </div>
+                    <div className="text-[11px] text-muted-foreground mt-0.5">
+                      {supplierName ? (
+                        <>Fornitore: <span className="text-foreground/80">{supplierName}</span></>
+                      ) : (
+                        <span className="text-status-warning">Nessun fornitore configurato</span>
+                      )}
+                    </div>
                   </div>
                   <div className="text-right">
                     <div className="font-mono text-xs text-muted-foreground">Stock: <span className={cn(item.status === "critical" ? "text-status-critical" : "text-status-warning")}>{item.stock.toFixed(0)}</span> / ROP: {item.rop?.toFixed(0)}</div>
                     <div className="font-mono text-xs text-foreground">Suggerito: <span className="text-primary">{suggestedQty.toFixed(0)} {item.unit_of_measure}</span></div>
                   </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="gap-1 h-8 text-xs"
+                    disabled={!bestSi}
+                    onClick={() => openPoDialog([item.id])}
+                  >
+                    <ShoppingCart className="h-3.5 w-3.5" /> Genera PO
+                  </Button>
                 </div>
               );
             })}
@@ -319,7 +405,7 @@ export default function ReorderPage() {
             </Button>
             <div className="flex-1" />
             {selectedIds.size > 0 && (
-              <Button size="sm" className="gap-1 h-8" onClick={openPoDialog}>
+              <Button size="sm" className="gap-1 h-8" onClick={() => openPoDialog()}>
                 <ShoppingCart className="h-3.5 w-3.5" /> Genera PO ({selectedIds.size} selezionati)
               </Button>
             )}
@@ -407,7 +493,7 @@ export default function ReorderPage() {
               </Select>
               {hasMultipleSuppliers && (
                 <p className="text-xs text-status-warning mt-1 flex items-center gap-1">
-                  <AlertTriangle className="h-3 w-3" /> Articoli con fornitori diversi — verifica il listino
+                  <AlertTriangle className="h-3 w-3" /> Articoli con fornitori diversi — verranno creati PO separati per ogni fornitore
                 </p>
               )}
             </div>
