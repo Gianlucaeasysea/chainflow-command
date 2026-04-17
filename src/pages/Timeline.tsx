@@ -127,23 +127,42 @@ export default function TimelinePage() {
 
   const { data: ordersRaw = [], } = useQuery<PO[]>({
     queryKey: ["purchase_orders_timeline", loadAll],
+    retry: 2,
+    retryDelay: 1000,
     queryFn: async () => {
       let q = supabase.from("purchase_orders").select("id,po_number,supplier_id,status,order_date,requested_delivery_date,actual_delivery_date,product_item_id").order("order_date", { ascending: false });
       if (!loadAll) q = q.gte("order_date", sixMonthsAgo).limit(RECORD_LIMIT);
-      const { data, error } = await (q as any);
+      const { data, error } = await q;
       if (error) throw error;
-      return data as PO[];
+      return (data || []) as PO[];
     },
   });
   const showLimitBanner = !loadAll && ordersRaw.length >= RECORD_LIMIT;
   const orders = ordersRaw;
 
-  const { data: poLines = [] } = useQuery<PoLine[]>({ queryKey: ["all_po_lines"], queryFn: async () => { const { data, error } = await supabase.from("po_lines").select("id,purchase_order_id,item_id,quantity"); if (error) throw error; return data as PoLine[]; } });
-  const { data: deliveries = [] } = useQuery<PoDelivery[]>({ queryKey: ["po_deliveries"], queryFn: async () => { const { data, error } = await (supabase.from as any)("po_deliveries").select("*").order("scheduled_date"); if (error) { console.warn(error.message); return []; } return data as PoDelivery[]; } });
-  const { data: wos = [] } = useQuery<WO[]>({ queryKey: ["production_orders"], queryFn: async () => { const { data, error } = await supabase.from("production_orders").select("id,wo_number,product_item_id,quantity_to_produce,status,planned_start,planned_end,actual_start,actual_end"); if (error) throw error; return data as WO[]; } });
-  const { data: lots = [] } = useQuery<Lot[]>({ queryKey: ["inventory_lots"], queryFn: async () => { const { data, error } = await supabase.from("inventory_lots").select("id,item_id,lot_number,quantity_on_hand,status,purchase_order_id,expiry_date"); if (error) throw error; return data as Lot[]; } });
-  const { data: bomHeaders = [] } = useQuery<BomHeader[]>({ queryKey: ["bom_headers_tl"], queryFn: async () => { const { data, error } = await supabase.from("bom_headers").select("id,item_id"); if (error) throw error; return data as BomHeader[]; } });
-  const { data: bomLines = [] } = useQuery<BomLine[]>({ queryKey: ["bom_lines_tl"], queryFn: async () => { const { data, error } = await supabase.from("bom_lines").select("bom_header_id,component_item_id"); if (error) throw error; return data as BomLine[]; } });
+  const { data: poLines = [] } = useQuery<PoLine[]>({ queryKey: ["all_po_lines"], queryFn: async () => { const { data, error } = await supabase.from("po_lines").select("id,purchase_order_id,item_id,quantity"); if (error) throw error; return (data || []) as PoLine[]; } });
+  const {
+    data: deliveries = [],
+    error: deliveriesError,
+    isLoading: deliveriesLoading,
+    refetch: refetchDeliveries,
+  } = useQuery<PoDelivery[]>({
+    queryKey: ["po_deliveries"],
+    retry: 2,
+    retryDelay: 1000,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("po_deliveries")
+        .select("id,purchase_order_id,po_line_id,scheduled_date,quantity,status,actual_delivery_date,notes")
+        .order("scheduled_date");
+      if (error) throw new Error("Errore caricamento consegne: " + error.message);
+      return (data || []) as PoDelivery[];
+    },
+  });
+  const { data: wos = [] } = useQuery<WO[]>({ queryKey: ["production_orders"], queryFn: async () => { const { data, error } = await supabase.from("production_orders").select("id,wo_number,product_item_id,quantity_to_produce,status,planned_start,planned_end,actual_start,actual_end"); if (error) throw error; return (data || []) as WO[]; } });
+  const { data: lots = [] } = useQuery<Lot[]>({ queryKey: ["inventory_lots"], queryFn: async () => { const { data, error } = await supabase.from("inventory_lots").select("id,item_id,lot_number,quantity_on_hand,status,purchase_order_id,expiry_date"); if (error) throw error; return (data || []) as Lot[]; } });
+  const { data: bomHeaders = [] } = useQuery<BomHeader[]>({ queryKey: ["bom_headers_tl"], queryFn: async () => { const { data, error } = await supabase.from("bom_headers").select("id,item_id"); if (error) throw error; return (data || []) as BomHeader[]; } });
+  const { data: bomLines = [] } = useQuery<BomLine[]>({ queryKey: ["bom_lines_tl"], queryFn: async () => { const { data, error } = await supabase.from("bom_lines").select("bom_header_id,component_item_id"); if (error) throw error; return (data || []) as BomLine[]; } });
 
   const getItem = (id: string) => items.find(i => i.id === id);
   const getSupplier = (id: string) => suppliers.find(s => s.id === id);
