@@ -20,6 +20,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import ExportButton from "@/components/ExportButton";
+import { POSITIVE_MOVEMENT_TYPES } from "@/lib/constants";
 
 const MOVEMENT_TYPES = [
   { value: "po_inbound", label: "Carico da PO", sign: "+", direction: "in" },
@@ -30,7 +31,7 @@ const MOVEMENT_TYPES = [
   { value: "customer_return", label: "Reso da Cliente", sign: "+", direction: "in" },
 ];
 
-const POSITIVE_TYPES = ["po_inbound", "adjustment_in", "customer_return"];
+const POSITIVE_TYPES = POSITIVE_MOVEMENT_TYPES as readonly string[];
 
 const formatEur = (v: number) =>
   v.toLocaleString("it-IT", { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
