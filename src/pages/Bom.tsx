@@ -307,8 +307,8 @@ export default function BomPage() {
                   const lastStd = getLatestStandardCost(selectedHeader.item_id);
                   const outdated = lastStd === null || Math.abs(lastStd - totalProductCost) > 0.01;
                   return outdated ? (
-                    <div className="mt-3 flex items-center justify-between bg-orange-500/10 border border-orange-500/30 rounded-md px-3 py-2">
-                      <div className="flex items-center gap-2 text-xs text-orange-600">
+                    <div className="mt-3 flex items-center justify-between bg-[hsl(var(--status-warning)/0.1)] border border-[hsl(var(--status-warning)/0.3)] rounded-md px-3 py-2">
+                      <div className="flex items-center gap-2 text-xs text-[hsl(var(--status-warning))]">
                         <AlertTriangle className="h-3.5 w-3.5" />
                         <span>Costo standard {lastStd !== null ? `(€${lastStd.toFixed(2)})` : "(mai impostato)"} diverso dal costo BOM calcolato</span>
                       </div>
