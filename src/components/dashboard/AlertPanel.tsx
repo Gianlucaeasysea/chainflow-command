@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { AlertTriangle, CheckCircle, ChevronRight } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { format, differenceInDays } from "date-fns";
+import { computeStockMap } from "@/lib/stock";
 
 type Alert = { title: string; desc: string; severity: "critical" | "warning"; link: string };
 
