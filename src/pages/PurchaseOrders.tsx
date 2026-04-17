@@ -645,7 +645,7 @@ export default function PurchaseOrdersPage() {
 
       {/* ========== CREATE PO - MULTI STEP ========== */}
       <Dialog open={createOpen} onOpenChange={(open) => { if (!open) resetCreateForm(); else setCreateOpen(true); }}>
-        <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
+        <DialogContent className="max-w-4xl w-[85vw] max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-3">
               Nuovo Ordine Fornitore
