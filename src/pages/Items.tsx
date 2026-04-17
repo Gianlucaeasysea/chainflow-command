@@ -180,6 +180,7 @@ export default function ItemsPage() {
               ) : filtered.map((item: any) => (
                 <tr key={item.id} className="hover:bg-muted/20 transition-colors cursor-pointer" onClick={() => setDetailItemId(item.id)}>
                   <td className="p-3 font-mono text-primary font-medium">{item.item_code}</td>
+                  <td className="p-3 font-mono text-xs text-muted-foreground">{item.ean || "—"}</td>
                   <td className="p-3 text-foreground">{item.description}</td>
                   <td className="p-3"><Badge variant="outline" className="text-[10px] font-mono">{ITEM_TYPES.find(t => t.value === (item.item_type || "component"))?.label || item.item_type}</Badge></td>
                   <td className="p-3"><Badge variant="outline" className="font-mono text-xs">{item.unit_of_measure}</Badge></td>
