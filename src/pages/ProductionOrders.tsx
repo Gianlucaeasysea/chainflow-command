@@ -66,7 +66,7 @@ export default function ProductionOrdersPage() {
     enabled: !!detailOrderId,
   });
 
-  const selectedWo = useMemo(() => undefined as any, []); // placeholder, replaced below
+  
 
   const { data: detailBomLines = [] } = useQuery({
     queryKey: ["bom_lines_detail", detailOrderId],
