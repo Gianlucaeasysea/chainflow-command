@@ -318,6 +318,20 @@ export default function TimelinePage() {
         </div>
       )}
 
+      {/* Deliveries error banner */}
+      {deliveriesError && (
+        <div className="flex items-center gap-2 bg-status-warning/10 border border-status-warning/30 rounded-lg px-4 py-2 text-sm">
+          <AlertCircle className="h-4 w-4 text-status-warning shrink-0" />
+          <span className="text-foreground">Dati consegne parziali: alcuni punti potrebbero non essere visibili.</span>
+          <Button variant="link" size="sm" className="h-auto p-0 text-primary" onClick={() => refetchDeliveries()}>
+            Riprova
+          </Button>
+        </div>
+      )}
+      {deliveriesLoading && !deliveries.length && (
+        <div className="text-xs text-muted-foreground px-1">Caricamento consegne…</div>
+      )}
+
       {/* Legend */}
       <div className="flex flex-wrap items-center gap-x-5 gap-y-1.5 text-[11px] text-muted-foreground">
         <span className="flex items-center gap-1.5"><span className="w-5 h-3 rounded bg-slate-300 inline-block" /> Bozza</span>
