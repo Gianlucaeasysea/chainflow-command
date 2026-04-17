@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { Plus, Search, TrendingUp, TrendingDown, DollarSign } from "lucide-react";
+import { Plus, Search, TrendingUp, TrendingDown, DollarSign, RefreshCw } from "lucide-react";
 import TableSkeleton from "@/components/TableSkeleton";
 import EmptyState from "@/components/EmptyState";
 import { Button } from "@/components/ui/button";
@@ -54,6 +54,82 @@ export default function CostsPage() {
     onError: (e) => toast.error((e as Error).message),
   });
 
+  // Bulk recompute standard costs from active BOMs
+  const recomputeFromBomMut = useMutation({
+    mutationFn: async () => {
+      // 1. Load active BOM headers
+      const { data: headers, error: hErr } = await supabase
+        .from("bom_headers")
+        .select("id, item_id, version")
+        .eq("status", "active");
+      if (hErr) throw hErr;
+      if (!headers || headers.length === 0) return 0;
+
+      // 2. Load all BOM lines for these headers
+      const headerIds = headers.map(h => h.id);
+      const { data: lines, error: lErr } = await supabase
+        .from("bom_lines")
+        .select("*")
+        .in("bom_header_id", headerIds);
+      if (lErr) throw lErr;
+
+      // 3. Group lines by header
+      const linesByHeader = new Map<string, typeof lines>();
+      for (const line of lines || []) {
+        if (!linesByHeader.has(line.bom_header_id)) linesByHeader.set(line.bom_header_id, []);
+        linesByHeader.get(line.bom_header_id)!.push(line);
+      }
+
+      // 4. Compute cost for each item and insert into cost_history
+      const today = new Date().toISOString().slice(0, 10);
+      const inserts: any[] = [];
+      // Keep only the latest version per item
+      const latestByItem = new Map<string, typeof headers[0]>();
+      for (const h of headers) {
+        const existing = latestByItem.get(h.item_id);
+        if (!existing || h.version > existing.version) latestByItem.set(h.item_id, h);
+      }
+
+      for (const header of latestByItem.values()) {
+        const headerLines = linesByHeader.get(header.id) || [];
+        if (headerLines.length === 0) continue;
+        let cost = 0;
+        for (const line of headerLines) {
+          const compItem = items.find((i: any) => i.id === line.component_item_id) as any;
+          const unitCost = Number(compItem?.unit_cost || 0) + Number(compItem?.assembly_cost || 0);
+          const effectiveQty = Number(line.quantity) * (1 + Number(line.waste_pct) / 100);
+          cost += unitCost * effectiveQty;
+        }
+        // Add parent assembly cost
+        const parentItem = items.find((i: any) => i.id === header.item_id) as any;
+        cost += Number(parentItem?.assembly_cost || 0);
+
+        inserts.push({
+          item_id: header.item_id,
+          cost_type: "standard",
+          amount: Math.round(cost * 100) / 100,
+          effective_date: today,
+          source: `Ricalcolato da BOM v${header.version}`,
+        });
+      }
+
+      if (inserts.length === 0) return 0;
+      const { error: insErr } = await supabase.from("cost_history").insert(inserts);
+      if (insErr) throw insErr;
+      return inserts.length;
+    },
+    onSuccess: (count) => {
+      qc.invalidateQueries({ queryKey: ["cost_history"] });
+      qc.invalidateQueries({ queryKey: ["cost_history_standard"] });
+      if (count === 0) {
+        toast.info("Nessuna BOM attiva da ricalcolare");
+      } else {
+        toast.success(`Aggiornati ${count} costi da distinta base`);
+      }
+    },
+    onError: (e) => toast.error((e as Error).message),
+  });
+
   // Latest cost per item
   const latestCosts = items.map(item => {
     const itemCosts = costHistory.filter(c => c.item_id === item.id);
@@ -83,6 +159,15 @@ export default function CostsPage() {
           <p className="text-sm text-muted-foreground">Storico e analisi costi articoli</p>
         </div>
         <div className="flex gap-2">
+          <Button
+            variant="outline"
+            className="gap-2"
+            disabled={recomputeFromBomMut.isPending}
+            onClick={() => recomputeFromBomMut.mutate()}
+          >
+            <RefreshCw className={cn("h-4 w-4", recomputeFromBomMut.isPending && "animate-spin")} />
+            Ricalcola da BOM
+          </Button>
           <ExportButton filename="storico_costi" columns={[
             { key: "item_code", label: "Codice" }, { key: "item_desc", label: "Descrizione" },
             { key: "cost_type", label: "Tipo Costo" }, { key: "amount", label: "Costo Unitario" },

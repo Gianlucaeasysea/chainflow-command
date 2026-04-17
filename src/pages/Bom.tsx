@@ -152,13 +152,42 @@ export default function BomPage() {
   };
 
   const isCostOutdated = (bom: typeof bomHeaders[0]) => {
-    // We need to compute BOM cost for this header — only meaningful for selected BOM
-    // For list view, compare item.unit_cost with a quick flag
     const lastStd = getLatestStandardCost(bom.item_id);
-    if (lastStd === null) return true; // never set
+    if (lastStd === null) return true;
     const item = getItem(bom.item_id) as any;
     const itemCost = Number(item?.unit_cost || 0);
     return Math.abs(lastStd - itemCost) > 0.01 || lastStd === 0;
+  };
+
+  // Load all bom_lines once for cost computation in list view
+  const { data: allBomLines = [] } = useQuery({
+    queryKey: ["bom_lines_all"],
+    queryFn: async () => {
+      const { data, error } = await supabase.from("bom_lines").select("*");
+      if (error) throw error;
+      return data;
+    },
+  });
+
+  // Compute cost of a BOM header by id (uses items.unit_cost + assembly_cost)
+  const computeBomCost = (bomId: string) => {
+    const lines = allBomLines.filter(l => l.bom_header_id === bomId);
+    if (lines.length === 0) return null;
+    let cost = 0;
+    let hasOutdatedComponent = false;
+    const ninetyDaysAgo = Date.now() - 90 * 24 * 60 * 60 * 1000;
+    for (const line of lines) {
+      const compItem = getItem(line.component_item_id) as any;
+      const unitCost = Number(compItem?.unit_cost || 0) + Number(compItem?.assembly_cost || 0);
+      const effectiveQty = Number(line.quantity) * (1 + Number(line.waste_pct) / 100);
+      cost += unitCost * effectiveQty;
+      // Check component cost age
+      if (compItem?.updated_at) {
+        const updatedAt = new Date(compItem.updated_at).getTime();
+        if (updatedAt < ninetyDaysAgo) hasOutdatedComponent = true;
+      }
+    }
+    return { cost, hasOutdatedComponent };
   };
 
   const selectedHeader = bomHeaders.find(b => b.id === selectedBom);
@@ -197,25 +226,39 @@ export default function BomPage() {
           <div className="divide-y divide-border max-h-[60vh] overflow-y-auto">
             {bomHeaders.length === 0 ? (
               <div className="p-6 text-center text-muted-foreground text-sm">Nessuna distinta</div>
-            ) : bomHeaders.map(bom => (
+            ) : bomHeaders.map(bom => {
+              const bomCostInfo = computeBomCost(bom.id);
+              return (
               <button key={bom.id} onClick={() => setSelectedBom(bom.id)}
                 className={cn("w-full text-left p-3 hover:bg-muted/30 transition-colors flex items-center gap-3",
                   selectedBom === bom.id && "bg-muted/50 border-l-2 border-l-primary")}>
                 <Layers className="h-4 w-4 text-primary shrink-0" />
                 <div className="min-w-0 flex-1">
                   <div className="text-sm font-medium text-foreground truncate">{getItemCode(bom.item_id)}</div>
-                  <div className="text-xs text-muted-foreground">v{bom.version}</div>
+                  <div className="text-xs text-muted-foreground flex items-center gap-2">
+                    <span>v{bom.version}</span>
+                    <span className="font-mono">
+                      {bomCostInfo ? `€${bomCostInfo.cost.toFixed(2)}` : "—"}
+                    </span>
+                    {bomCostInfo?.hasOutdatedComponent && (
+                      <AlertTriangle
+                        className="h-3 w-3 text-status-warning"
+                        aria-label="Alcuni costi componenti potrebbero essere obsoleti (>90gg)"
+                      />
+                    )}
+                  </div>
                 </div>
                 <div className="flex items-center gap-1.5 shrink-0">
                   {bom.status === "active" && isCostOutdated(bom) && (
-                    <Badge variant="outline" className="text-[10px] border-orange-400 text-orange-500 gap-0.5">
+                    <Badge variant="outline" className="text-[10px] border-status-warning text-status-warning gap-0.5">
                       <AlertTriangle className="h-3 w-3" /> Costo
                     </Badge>
                   )}
                   <Badge className={cn("text-xs", statusColors[bom.status])}>{bom.status}</Badge>
                 </div>
               </button>
-            ))}
+              );
+            })}
           </div>
         </div>
 
