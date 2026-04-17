@@ -211,6 +211,7 @@ export type Database = {
           created_at: string
           description: string
           drive_folder_url: string | null
+          ean: string | null
           id: string
           image_url: string | null
           item_code: string
@@ -227,6 +228,7 @@ export type Database = {
           created_at?: string
           description: string
           drive_folder_url?: string | null
+          ean?: string | null
           id?: string
           image_url?: string | null
           item_code: string
@@ -243,6 +245,7 @@ export type Database = {
           created_at?: string
           description?: string
           drive_folder_url?: string | null
+          ean?: string | null
           id?: string
           image_url?: string | null
           item_code?: string
