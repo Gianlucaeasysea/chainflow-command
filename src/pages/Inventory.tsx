@@ -21,14 +21,17 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import ExportButton from "@/components/ExportButton";
 import { POSITIVE_MOVEMENT_TYPES } from "@/lib/constants";
+import { computeStockMap } from "@/lib/stock";
 
 const MOVEMENT_TYPES = [
   { value: "po_inbound", label: "Carico da PO", sign: "+", direction: "in" },
   { value: "wo_output", label: "Scarico da WO", sign: "−", direction: "out" },
+  { value: "wo_finish", label: "Carico da Produzione", sign: "+", direction: "in" },
   { value: "adjustment_in", label: "Rettifica +", sign: "+", direction: "in" },
   { value: "adjustment_out", label: "Rettifica −", sign: "−", direction: "out" },
   { value: "supplier_return", label: "Reso a Fornitore", sign: "−", direction: "out" },
   { value: "customer_return", label: "Reso da Cliente", sign: "+", direction: "in" },
+  { value: "customer_shipment", label: "Spedizione Cliente", sign: "−", direction: "out" },
 ];
 
 const POSITIVE_TYPES = POSITIVE_MOVEMENT_TYPES as readonly string[];
@@ -73,15 +76,8 @@ export default function InventoryPage() {
     },
   });
 
-  // Compute stock from movements
-  const stockMap = useMemo(() => {
-    const map = new Map<string, number>();
-    for (const m of movements) {
-      const sign = POSITIVE_TYPES.includes(m.movement_type) ? 1 : -1;
-      map.set(m.item_id, (map.get(m.item_id) || 0) + sign * Math.abs(m.quantity));
-    }
-    return map;
-  }, [movements]);
+  // Compute stock from movements (regole centralizzate in lib/stock)
+  const stockMap = useMemo(() => computeStockMap(movements || []), [movements]);
 
   const ropMap = useMemo(() => new Map(reorderParams.map((r) => [r.item_id, r.reorder_point])), [reorderParams]);
 
@@ -118,7 +114,7 @@ export default function InventoryPage() {
       const { error } = await supabase.from("stock_movements").insert({
         item_id: form.item_id,
         movement_type: form.movement_type,
-        quantity: isOutbound ? -Math.abs(qty) : Math.abs(qty),
+        quantity: Math.abs(qty),
         lot_number: form.lot_number || null,
         warehouse: form.warehouse,
         notes: form.notes || null,

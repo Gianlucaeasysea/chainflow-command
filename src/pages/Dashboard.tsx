@@ -7,7 +7,8 @@ import { PurchaseChart } from "@/components/dashboard/PurchaseChart";
 import { TopSuppliersChart } from "@/components/dashboard/TopSuppliersChart";
 import { QuickActions } from "@/components/dashboard/QuickActions";
 import { Skeleton } from "@/components/ui/skeleton";
-import { POSITIVE_MOVEMENT_TYPES, ACTIVE_WO_STATUSES } from "@/lib/constants";
+import { ACTIVE_WO_STATUSES } from "@/lib/constants";
+import { computeStockMap } from "@/lib/stock";
 
 const formatEur = (v: number) =>
   v.toLocaleString("it-IT", { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
@@ -89,11 +90,7 @@ export default function Dashboard() {
         .in("item_id", itemIds);
       if (e2) throw e2;
 
-      const stockMap = new Map<string, number>();
-      for (const m of movements || []) {
-        const sign = (POSITIVE_MOVEMENT_TYPES as readonly string[]).includes(m.movement_type) ? 1 : -1;
-        stockMap.set(m.item_id, (stockMap.get(m.item_id) || 0) + sign * m.quantity);
-      }
+      const stockMap = computeStockMap(movements || []);
 
       return params.filter((p) => {
         const stock = stockMap.get(p.item_id) || 0;
