@@ -194,6 +194,7 @@ export default function ProductionOrdersPage() {
     mutationFn: async ({ id, status }: { id: string; status: string }) => {
       const order = orders.find(o => o.id === id);
       if (!order) throw new Error("Ordine non trovato");
+      const oldStatus = order.status || "unknown";
 
       // Material allocation check
       if (status === "materials_allocated") {
@@ -207,6 +208,15 @@ export default function ProductionOrdersPage() {
       const { error } = await supabase.from("production_orders").update(updates).eq("id", id);
       if (error) throw error;
 
+      // Audit trail
+      const oldLabel = WO_STATUSES.find(s => s.value === oldStatus)?.label || oldStatus;
+      const newLabel = WO_STATUSES.find(s => s.value === status)?.label || status;
+      await supabase.from("wo_status_history").insert({
+        production_order_id: id,
+        status,
+        notes: `Da ${oldLabel} → ${newLabel}`,
+      });
+
       // Load finished product
       if (status === "completed") {
         await loadFinishedProduct(order);
@@ -217,6 +227,7 @@ export default function ProductionOrdersPage() {
     onSuccess: (data) => {
       if (data?.blocked) return;
       qc.invalidateQueries({ queryKey: ["production_orders"] });
+      qc.invalidateQueries({ queryKey: ["wo_status_history"] });
       toast.success("Stato aggiornato");
     },
     onError: (e) => toast.error((e as Error).message),
@@ -235,10 +246,18 @@ export default function ProductionOrdersPage() {
       const updates: any = { status: "materials_allocated" };
       const { error } = await supabase.from("production_orders").update(updates).eq("id", order.id);
       if (error) throw error;
+
+      // Audit trail (forced)
+      await supabase.from("wo_status_history").insert({
+        production_order_id: order.id,
+        status: "materials_allocated",
+        notes: "Allocazione forzata con deficit di stock",
+      });
     },
     onSuccess: () => {
       setStockWarning(null);
       qc.invalidateQueries({ queryKey: ["production_orders"] });
+      qc.invalidateQueries({ queryKey: ["wo_status_history"] });
       toast.success("Materiali allocati (con deficit)");
     },
     onError: (e) => toast.error((e as Error).message),
