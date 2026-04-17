@@ -493,7 +493,7 @@ export default function ReorderPage() {
               </Select>
               {hasMultipleSuppliers && (
                 <p className="text-xs text-status-warning mt-1 flex items-center gap-1">
-                  <AlertTriangle className="h-3 w-3" /> Articoli con fornitori diversi — verifica il listino
+                  <AlertTriangle className="h-3 w-3" /> Articoli con fornitori diversi — verranno creati PO separati per ogni fornitore
                 </p>
               )}
             </div>
