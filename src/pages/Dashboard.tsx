@@ -7,6 +7,7 @@ import { PurchaseChart } from "@/components/dashboard/PurchaseChart";
 import { TopSuppliersChart } from "@/components/dashboard/TopSuppliersChart";
 import { QuickActions } from "@/components/dashboard/QuickActions";
 import { Skeleton } from "@/components/ui/skeleton";
+import { POSITIVE_MOVEMENT_TYPES, ACTIVE_WO_STATUSES } from "@/lib/constants";
 
 const formatEur = (v: number) =>
   v.toLocaleString("it-IT", { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
@@ -65,7 +66,7 @@ export default function Dashboard() {
       const { count, error } = await supabase
         .from("production_orders")
         .select("id", { count: "exact", head: true })
-        .in("status", ["planned", "pianificato", "materiali_allocati", "in_lavorazione", "controllo_qualita"]);
+        .in("status", ACTIVE_WO_STATUSES as unknown as string[]);
       if (error) throw error;
       return count || 0;
     },
@@ -88,10 +89,9 @@ export default function Dashboard() {
         .in("item_id", itemIds);
       if (e2) throw e2;
 
-      const positiveTypes = ["po_inbound", "adjustment_in", "customer_return"];
       const stockMap = new Map<string, number>();
       for (const m of movements || []) {
-        const sign = positiveTypes.includes(m.movement_type) ? 1 : -1;
+        const sign = (POSITIVE_MOVEMENT_TYPES as readonly string[]).includes(m.movement_type) ? 1 : -1;
         stockMap.set(m.item_id, (stockMap.get(m.item_id) || 0) + sign * m.quantity);
       }
 

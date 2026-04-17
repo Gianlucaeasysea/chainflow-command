@@ -28,7 +28,8 @@ const MOVEMENT_TYPES = [
   { value: "customer_return", label: "Reso da Cliente", sign: "+", direction: "in" },
 ];
 
-const POSITIVE_TYPES = ["po_inbound", "adjustment_in", "customer_return"];
+import { POSITIVE_MOVEMENT_TYPES } from "@/lib/constants";
+const POSITIVE_TYPES = POSITIVE_MOVEMENT_TYPES as readonly string[];
 
 const formatEur = (v: number) =>
   v.toLocaleString("it-IT", { style: "currency", currency: "EUR", maximumFractionDigits: 0 });

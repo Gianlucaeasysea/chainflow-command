@@ -15,14 +15,15 @@ import {
 } from "@/components/ui/select";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { POSITIVE_MOVEMENT_TYPES, WO_STATUS_LABELS } from "@/lib/constants";
 
 const WO_STATUSES = [
-  { value: "planned", label: "Pianificato", color: "text-muted-foreground bg-muted/50" },
-  { value: "materials_allocated", label: "Materiali Allocati", color: "status-info" },
-  { value: "in_progress", label: "In Lavorazione", color: "status-warning" },
-  { value: "quality_check", label: "Controllo Qualità", color: "status-info" },
-  { value: "completed", label: "Completato", color: "status-ok" },
-  { value: "closed", label: "Chiuso", color: "text-muted-foreground bg-muted/30" },
+  { value: "planned", label: WO_STATUS_LABELS.planned, color: "text-muted-foreground bg-muted/50" },
+  { value: "materials_allocated", label: WO_STATUS_LABELS.materials_allocated, color: "status-info" },
+  { value: "in_progress", label: WO_STATUS_LABELS.in_progress, color: "status-warning" },
+  { value: "quality_check", label: WO_STATUS_LABELS.quality_check, color: "status-info" },
+  { value: "completed", label: WO_STATUS_LABELS.completed, color: "status-ok" },
+  { value: "closed", label: WO_STATUS_LABELS.closed, color: "text-muted-foreground bg-muted/30" },
 ];
 
 const PRIORITIES = [
@@ -32,7 +33,7 @@ const PRIORITIES = [
   { value: "urgent", label: "Urgente", color: "text-status-critical" },
 ];
 
-const POSITIVE_MOVE_TYPES = ["po_inbound", "adjustment_in", "customer_return"];
+const POSITIVE_MOVE_TYPES = POSITIVE_MOVEMENT_TYPES as readonly string[];
 
 type StockCheck = { item_code: string; description: string; needed: number; available: number; uom: string };
 
