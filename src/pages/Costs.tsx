@@ -159,6 +159,15 @@ export default function CostsPage() {
           <p className="text-sm text-muted-foreground">Storico e analisi costi articoli</p>
         </div>
         <div className="flex gap-2">
+          <Button
+            variant="outline"
+            className="gap-2"
+            disabled={recomputeFromBomMut.isPending}
+            onClick={() => recomputeFromBomMut.mutate()}
+          >
+            <RefreshCw className={cn("h-4 w-4", recomputeFromBomMut.isPending && "animate-spin")} />
+            Ricalcola da BOM
+          </Button>
           <ExportButton filename="storico_costi" columns={[
             { key: "item_code", label: "Codice" }, { key: "item_desc", label: "Descrizione" },
             { key: "cost_type", label: "Tipo Costo" }, { key: "amount", label: "Costo Unitario" },
