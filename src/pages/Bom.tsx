@@ -226,25 +226,39 @@ export default function BomPage() {
           <div className="divide-y divide-border max-h-[60vh] overflow-y-auto">
             {bomHeaders.length === 0 ? (
               <div className="p-6 text-center text-muted-foreground text-sm">Nessuna distinta</div>
-            ) : bomHeaders.map(bom => (
+            ) : bomHeaders.map(bom => {
+              const bomCostInfo = computeBomCost(bom.id);
+              return (
               <button key={bom.id} onClick={() => setSelectedBom(bom.id)}
                 className={cn("w-full text-left p-3 hover:bg-muted/30 transition-colors flex items-center gap-3",
                   selectedBom === bom.id && "bg-muted/50 border-l-2 border-l-primary")}>
                 <Layers className="h-4 w-4 text-primary shrink-0" />
                 <div className="min-w-0 flex-1">
                   <div className="text-sm font-medium text-foreground truncate">{getItemCode(bom.item_id)}</div>
-                  <div className="text-xs text-muted-foreground">v{bom.version}</div>
+                  <div className="text-xs text-muted-foreground flex items-center gap-2">
+                    <span>v{bom.version}</span>
+                    <span className="font-mono">
+                      {bomCostInfo ? `€${bomCostInfo.cost.toFixed(2)}` : "—"}
+                    </span>
+                    {bomCostInfo?.hasOutdatedComponent && (
+                      <AlertTriangle
+                        className="h-3 w-3 text-status-warning"
+                        aria-label="Alcuni costi componenti potrebbero essere obsoleti (>90gg)"
+                      />
+                    )}
+                  </div>
                 </div>
                 <div className="flex items-center gap-1.5 shrink-0">
                   {bom.status === "active" && isCostOutdated(bom) && (
-                    <Badge variant="outline" className="text-[10px] border-orange-400 text-orange-500 gap-0.5">
+                    <Badge variant="outline" className="text-[10px] border-status-warning text-status-warning gap-0.5">
                       <AlertTriangle className="h-3 w-3" /> Costo
                     </Badge>
                   )}
                   <Badge className={cn("text-xs", statusColors[bom.status])}>{bom.status}</Badge>
                 </div>
               </button>
-            ))}
+              );
+            })}
           </div>
         </div>
 
