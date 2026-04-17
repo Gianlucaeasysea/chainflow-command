@@ -67,7 +67,7 @@ export default function ProductionOrdersPage() {
   const createMut = useMutation({
     mutationFn: async () => {
       const woNum = `WO-${new Date().getFullYear()}-${String(orders.length + 1).padStart(4, "0")}`;
-      const { error } = await supabase.from("production_orders").insert({
+      const { data, error } = await supabase.from("production_orders").insert({
         wo_number: woNum,
         product_item_id: form.product_item_id,
         bom_header_id: form.bom_header_id || null,
@@ -76,11 +76,18 @@ export default function ProductionOrdersPage() {
         planned_start: form.planned_start || null,
         planned_end: form.planned_end || null,
         notes: form.notes || null,
-      });
+      }).select("id").single();
       if (error) throw error;
+      // Audit trail: initial status
+      await supabase.from("wo_status_history").insert({
+        production_order_id: data.id,
+        status: "planned",
+        notes: "ODP creato",
+      });
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["production_orders"] });
+      qc.invalidateQueries({ queryKey: ["wo_status_history"] });
       setCreateOpen(false);
       setForm({ product_item_id: "", bom_header_id: "", quantity_to_produce: "1", priority: "normal", planned_start: "", planned_end: "", notes: "" });
       toast.success("Ordine di produzione creato");
